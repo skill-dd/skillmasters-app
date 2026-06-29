@@ -782,9 +782,7 @@ function stripBasePath(pathname, res) {
     return "";
   }
   if (!pathname.startsWith(`${BASE_PATH}/`)) {
-    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Nicht gefunden");
-    return "";
+    return pathname;
   }
   const stripped = pathname.slice(BASE_PATH.length);
   return stripped || "/";
