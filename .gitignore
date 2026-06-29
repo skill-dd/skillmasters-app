@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+.env*.swp
+node_modules
+outputs
+data/gallery.json
+.DS_Store
