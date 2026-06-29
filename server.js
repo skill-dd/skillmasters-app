@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
 const outputImagesDir = path.join(__dirname, "outputs", "images");
 const outputPromptsDir = path.join(__dirname, "outputs", "prompts");
+const dataDir = path.join(__dirname, "data");
 const galleryPath = path.join(__dirname, "data", "gallery.json");
 const referenceImagePath = path.join(__dirname, "assets", "thumbnail-referenzbild.png");
 
@@ -745,7 +746,10 @@ async function readJson(req) {
 
 async function readGallery() {
   if (!existsSync(galleryPath)) return [];
-  return JSON.parse(await readFile(galleryPath, "utf8")).map((item) => ({
+  const text = await readFile(galleryPath, "utf8");
+  const entries = text.trim() ? JSON.parse(text) : [];
+  if (!Array.isArray(entries)) return [];
+  return entries.map((item) => ({
     ...item,
     imageUrl: withBasePath(item.imageUrl),
     svgUrl: item.svgUrl ? withBasePath(item.svgUrl) : "",
@@ -754,6 +758,7 @@ async function readGallery() {
 }
 
 async function writeGallery(entries) {
+  await mkdir(dataDir, { recursive: true });
   await writeFile(galleryPath, `${JSON.stringify(entries, null, 2)}\n`);
 }
 
