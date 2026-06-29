@@ -44,7 +44,7 @@ const el = {
 init();
 
 async function init() {
-  state.config = await api("/api/config");
+  state.config = await api("api/config");
   renderLessonIcons();
   bindEvents();
   updateModeUi();
@@ -102,7 +102,7 @@ async function createIdeas() {
   resetIdeas();
   try {
     const payload = formPayload();
-    const data = await api("/api/ideas", {
+    const data = await api("api/ideas", {
       method: "POST",
       body: JSON.stringify(payload)
     });
@@ -206,7 +206,7 @@ async function generateImage() {
       selectedIdea: state.selectedIdea,
       count: 1
     };
-    const data = await api("/api/generate", {
+    const data = await api("api/generate", {
       method: "POST",
       body: JSON.stringify(payload)
     });
@@ -220,7 +220,7 @@ async function generateImage() {
 }
 
 async function loadGallery() {
-  const items = await api("/api/gallery");
+  const items = await api("api/gallery");
   renderLatestPreview(items[0]);
   if (!items.length) {
     el.gallery.className = "gallery empty";

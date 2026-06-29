@@ -16,6 +16,7 @@ loadEnv(path.join(__dirname, ".env"));
 
 const PORT = Number(process.env.PORT || 5177);
 const HOST = process.env.HOST || "127.0.0.1";
+const BASE_PATH = normalizeBasePath(process.env.BASE_PATH || "");
 const CI = {
   navy: "#0F0F3C",
   red: "#F44336",
@@ -82,25 +83,29 @@ Hard rules:
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    if (req.method === "GET" && url.pathname === "/api/config") {
+    const requestPath = stripBasePath(url.pathname, res);
+    if (!requestPath) return;
+
+    if (req.method === "GET" && requestPath === "/api/config") {
       return json(res, {
         assetTypes,
         lessonIcons,
         symbolSystem,
         ci: CI,
-        imageSize: process.env.OPENAI_IMAGE_SIZE || "1536x864"
+        imageSize: process.env.OPENAI_IMAGE_SIZE || "1536x864",
+        basePath: BASE_PATH
       });
     }
-    if (req.method === "GET" && url.pathname === "/api/gallery") {
+    if (req.method === "GET" && requestPath === "/api/gallery") {
       return json(res, await readGallery());
     }
-    if (req.method === "POST" && url.pathname === "/api/ideas") {
+    if (req.method === "POST" && requestPath === "/api/ideas") {
       return json(res, await createIdeas(await readJson(req)));
     }
-    if (req.method === "POST" && url.pathname === "/api/generate") {
+    if (req.method === "POST" && requestPath === "/api/generate") {
       return json(res, await generateImages(await readJson(req)));
     }
-    return serveStatic(url.pathname, res);
+    return serveStatic(requestPath, res);
   } catch (error) {
     console.error(error);
     json(res, { error: error.message || "Unbekannter Fehler" }, 500);
@@ -108,7 +113,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`skillmasters-Grafiken laeuft auf http://${HOST}:${PORT}`);
+  console.log(`skillmasters-Grafiken laeuft auf http://${HOST}:${PORT}${BASE_PATH || ""}`);
 });
 
 async function createIdeas(payload) {
@@ -311,7 +316,7 @@ async function generateImages(payload) {
       }, selectedIdea);
       svg = await generatePresentationSvg(svgPrompt);
       await writeFile(svgFile, svg);
-      svgUrl = `/outputs/images/${baseName}.svg`;
+      svgUrl = withBasePath(`/outputs/images/${baseName}.svg`);
     }
 
     const promptRecord = {
@@ -353,9 +358,9 @@ async function generateImages(payload) {
       lessonIcon: normalized.lessonIcon,
       lessonIconLabel: normalized.lessonIconLabel,
       selectedIdea,
-      imageUrl: `/outputs/images/${baseName}.png`,
+      imageUrl: withBasePath(`/outputs/images/${baseName}.png`),
       svgUrl,
-      promptUrl: `/outputs/prompts/${baseName}.json`
+      promptUrl: withBasePath(`/outputs/prompts/${baseName}.json`)
     });
   }
 
@@ -740,7 +745,12 @@ async function readJson(req) {
 
 async function readGallery() {
   if (!existsSync(galleryPath)) return [];
-  return JSON.parse(await readFile(galleryPath, "utf8"));
+  return JSON.parse(await readFile(galleryPath, "utf8")).map((item) => ({
+    ...item,
+    imageUrl: withBasePath(item.imageUrl),
+    svgUrl: item.svgUrl ? withBasePath(item.svgUrl) : "",
+    promptUrl: withBasePath(item.promptUrl)
+  }));
 }
 
 async function writeGallery(entries) {
@@ -762,6 +772,33 @@ function serveStatic(requestPath, res) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("Nicht gefunden");
     });
+}
+
+function stripBasePath(pathname, res) {
+  if (!BASE_PATH) return pathname;
+  if (pathname === BASE_PATH) {
+    res.writeHead(308, { Location: `${BASE_PATH}/` });
+    res.end();
+    return "";
+  }
+  if (!pathname.startsWith(`${BASE_PATH}/`)) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Nicht gefunden");
+    return "";
+  }
+  const stripped = pathname.slice(BASE_PATH.length);
+  return stripped || "/";
+}
+
+function withBasePath(urlPath) {
+  if (!urlPath || !urlPath.startsWith("/") || urlPath.startsWith(`${BASE_PATH}/`)) return urlPath;
+  return `${BASE_PATH}${urlPath}`;
+}
+
+function normalizeBasePath(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed || trimmed === "/") return "";
+  return `/${trimmed.replace(/^\/+|\/+$/g, "")}`;
 }
 
 function json(res, data, status = 200) {
