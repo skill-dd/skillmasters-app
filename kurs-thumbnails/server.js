@@ -32,6 +32,7 @@ const APP_PATHS = {
   thumbnails: normalizeRoutePath(process.env.THUMBNAILS_PATH || "/"),
   presentations: normalizeRoutePath(process.env.PRESENTATIONS_PATH || "/__praesentationsfolien")
 };
+const PUBLIC_BASE_PATH = normalizeRoutePath(process.env.PUBLIC_BASE_PATH || "/");
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -939,7 +940,10 @@ function notFound(res) {
 }
 
 function withBasePath(urlPath) {
-  return urlPath;
+  const cleanPath = `/${String(urlPath || "").replace(/^\/+/, "")}`;
+  if (PUBLIC_BASE_PATH === "/") return cleanPath;
+  if (cleanPath === PUBLIC_BASE_PATH || cleanPath.startsWith(`${PUBLIC_BASE_PATH}/`)) return cleanPath;
+  return `${PUBLIC_BASE_PATH}${cleanPath}`;
 }
 
 function normalizeRoutePath(value) {

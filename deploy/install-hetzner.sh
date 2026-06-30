@@ -75,6 +75,7 @@ User=app
 WorkingDirectory=$APP_DIR
 Environment=HOST=127.0.0.1
 Environment=PORT=5177
+Environment=PUBLIC_BASE_PATH=/kurs-thumbnails
 Environment=PORTAL_PATH=/__portal
 Environment=THUMBNAILS_PATH=/
 Environment=PRESENTATIONS_PATH=/__praesentationsfolien
@@ -97,6 +98,7 @@ User=app
 WorkingDirectory=$APP_DIR
 Environment=HOST=127.0.0.1
 Environment=PORT=5178
+Environment=PUBLIC_BASE_PATH=/praesentationsfolien
 Environment=PORTAL_PATH=/__portal
 Environment=THUMBNAILS_PATH=/__kurs-thumbnails
 Environment=PRESENTATIONS_PATH=/
