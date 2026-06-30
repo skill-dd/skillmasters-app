@@ -83,10 +83,23 @@ button:disabled {
 }
 
 .portal-link {
-  color: var(--red);
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--navy);
   font-size: 13px;
   font-weight: 900;
   text-decoration: none;
+  box-shadow: 0 10px 24px rgba(15, 15, 60, 0.08);
+}
+
+.portal-link:hover {
+  border-color: var(--red);
+  color: var(--red);
 }
 
 .kicker {

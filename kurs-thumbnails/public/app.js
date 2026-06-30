@@ -75,8 +75,8 @@ function configureAppContext() {
     ? "Skillmasters Foliengrafiken"
     : "Skillmasters Kursgrafiken";
   const portalLink = document.querySelector("#portalLink");
-  portalLink.href = paths.portal || "/";
-  portalLink.hidden = String(paths.portal || "").startsWith("/__");
+  portalLink.href = String(paths.portal || "").startsWith("/__") ? "/" : paths.portal || "/";
+  portalLink.hidden = false;
 }
 
 function bindEvents() {
