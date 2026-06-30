@@ -5,4 +5,8 @@
 node_modules
 outputs
 data/gallery.json
+**/node_modules
+**/outputs
+**/data/gallery.json
+**/node_modules.incomplete-install
 .DS_Store

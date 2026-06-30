@@ -1,38 +1,25 @@
-# skillmasters-Grafiken
+# Skillmasters Grafiken
 
-Lokale Mini-App fuer Kursgrafiken im festen Skillmasters-Referenzstil.
+Monorepo fuer die getrennten Skillmasters-Grafik-Apps.
 
-## Start
-
-1. `.env.example` kopieren und als `.env` speichern.
-2. `OPENAI_API_KEY` in `.env` eintragen.
-3. App starten:
+## Lokale Apps
 
 ```bash
-npm run dev
+npm run dev:portal
+npm run dev:thumbnails
+npm run dev:praesentationen
 ```
 
-Danach im Browser oeffnen:
+- Portal: `http://127.0.0.1:5176/`
+- Kurs-Thumbnails: `http://127.0.0.1:5177/`
+- Praesentationsfolien: `http://127.0.0.1:5178/`
+
+## Gemeinsamer Stil
+
+Beide Generator-Apps importieren Stil, Referenzbild, CI-Farben und harte Prompt-Regeln aus:
 
 ```text
-http://localhost:5177/
+skillmasters-grafikstil
 ```
 
-## Lokale Pfade
-
-- Portal: `http://localhost:5177/`
-- Kurs-Thumbnails: `http://localhost:5177/kurs-thumbnails/`
-- Praesentationsfolien: `http://localhost:5177/praesentationsfolien/`
-- Der alte Pfad `/grafiken/` wird nicht mehr bedient.
-
-Die Pfade koennen ueber `PORTAL_PATH`, `THUMBNAILS_PATH` und `PRESENTATIONS_PATH` konfiguriert werden.
-
-## Feste Regeln
-
-- Ausgabe immer 16:9.
-- Stil immer wie `assets/thumbnail-referenzbild.png`.
-- Farben nur `#0F0F3C`, `#F44336`, `#FFFFFF`.
-- Keine Personen.
-- Kein Text im Bild, ausser zweistelligen Nummern bei Kapitel und Lektionen.
-- Immer nur eine Kernaussage als sofort verstaendliche Metapher.
-- Bilder und Prompts werden unter `outputs/` gespeichert.
+`.env`, API-Keys, `outputs/` und `data/gallery.json` werden nicht committed.

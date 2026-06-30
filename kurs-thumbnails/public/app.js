@@ -51,7 +51,7 @@ const el = {
 init();
 
 async function init() {
-  state.config = await api("/api/config");
+  state.config = await api("api/config");
   configureAppContext();
   renderLessonIcons();
   bindEvents();
@@ -62,9 +62,9 @@ async function init() {
 function configureAppContext() {
   const path = normalizePath(window.location.pathname);
   const paths = state.config.paths || {};
-  state.app = path === normalizePath(paths.presentations || "/praesentationsfolien/")
+  state.app = state.config.app || (path === normalizePath(paths.presentations || "/praesentationsfolien/")
     ? "presentations"
-    : "thumbnails";
+    : "thumbnails");
   state.allowedTypes = state.app === "presentations" ? ["presentation"] : ["chapter", "lesson"];
   state.type = state.allowedTypes[0];
   document.body.dataset.app = state.app;
@@ -74,7 +74,9 @@ function configureAppContext() {
   document.querySelector("#appKicker").textContent = state.app === "presentations"
     ? "Skillmasters Foliengrafiken"
     : "Skillmasters Kursgrafiken";
-  document.querySelector("#portalLink").href = paths.portal || "/";
+  const portalLink = document.querySelector("#portalLink");
+  portalLink.href = paths.portal || "/";
+  portalLink.hidden = String(paths.portal || "").startsWith("/__");
 }
 
 function bindEvents() {
@@ -265,7 +267,7 @@ async function generateImage() {
 }
 
 async function loadGallery() {
-  const items = await api(`/api/gallery?app=${encodeURIComponent(state.app)}`);
+  const items = await api(`api/gallery?app=${encodeURIComponent(state.app)}`);
   renderLatestPreview(items[0]);
   if (!items.length) {
     el.gallery.className = "gallery empty";
@@ -425,7 +427,7 @@ function setStatus(message) {
 }
 
 async function api(url, options = {}) {
-  const apiUrl = url.startsWith("/") ? url : `/${url}`;
+  const apiUrl = url;
   const response = await fetch(apiUrl, {
     headers: { "Content-Type": "application/json" },
     ...options

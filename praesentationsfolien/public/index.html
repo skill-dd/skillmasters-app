@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>skillmasters-Grafiken</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="shared/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="kicker" id="appKicker">Skillmasters Kursgrafiken</p>
+            <h1 id="appTitle">Kurs-Thumbnails</h1>
+          </div>
+          <div class="topbar-actions">
+            <a class="portal-link" id="portalLink" href="/">Portal</a>
+            <div class="palette" aria-label="CI-Farben">
+              <span class="swatch navy"></span>
+              <span class="swatch red"></span>
+              <span class="swatch white"></span>
+            </div>
+          </div>
+        </header>
+
+        <section class="panel form-panel" id="formPanel">
+          <div class="mode-group" aria-label="Generator-Modus">
+            <button class="mode-button selected" type="button" data-type="chapter">
+              <strong>Kapitel-Thumbnail</strong>
+              <span>Mit Zahl, Strich und Welle</span>
+            </button>
+            <button class="mode-button" type="button" data-type="lesson">
+              <strong>Lektion-Thumbnail</strong>
+              <span>Mit festem Symbol, Strich und Welle</span>
+            </button>
+            <button class="mode-button" type="button" data-type="presentation">
+              <strong>Präsentation</strong>
+              <span>Ohne Zahl, ohne Strich, ohne Welle</span>
+            </button>
+          </div>
+
+          <div class="grid number-grid" id="numberSection">
+            <label id="numberWrap">
+              <span>Nummer</span>
+              <input id="number" inputmode="numeric" maxlength="2" placeholder="01">
+            </label>
+          </div>
+
+          <div class="lesson-icon-section" id="lessonIconSection" hidden>
+            <span>Lektionssymbol</span>
+            <div class="lesson-icon-grid" id="lessonIconGrid" aria-label="Lektionssymbol auswählen"></div>
+          </div>
+
+          <label id="contextWrap" hidden>
+            <span>Kurs-/Fachkontext optional</span>
+            <input id="contextInput" placeholder="z. B. Arbeitssicherheit / Produktion / Unterweisung">
+          </label>
+
+          <label>
+            <span id="mainInputLabel">Sprechertext</span>
+            <textarea id="scriptText" rows="9" placeholder="Sprechertext hier einfuegen..."></textarea>
+          </label>
+
+          <div class="actions">
+            <button id="ideasBtn" class="primary">3 Bildideen erstellen</button>
+            <p id="status" class="status"></p>
+          </div>
+        </section>
+
+        <section class="panel ideas-panel">
+          <div class="section-head">
+            <h2>Bildideen</h2>
+            <span id="coreMessage" class="core"></span>
+          </div>
+          <div id="analysis" class="analysis" hidden>
+            <div>
+              <span id="analysisCoreLabel">Kernaussage</span>
+              <textarea id="analysisCore" class="analysis-input" rows="4"></textarea>
+            </div>
+            <div>
+              <span id="analysisEmotionLabel">Emotion</span>
+              <textarea id="analysisEmotion" class="analysis-input" rows="4"></textarea>
+            </div>
+            <div>
+              <span>Visuelle Metapher</span>
+              <textarea id="analysisMetaphor" class="analysis-input" rows="4"></textarea>
+            </div>
+          </div>
+          <div id="ideas" class="ideas empty">
+            <p>Nach dem Sprechertext erscheinen hier genau drei reduzierte Ideen.</p>
+          </div>
+          <div id="componentPicker" class="component-picker" hidden>
+            <div>
+              <span>Empfohlene Anzahl</span>
+              <strong id="componentRecommendation">1 Grafik</strong>
+            </div>
+            <div class="component-options" aria-label="Anzahl einzelner Grafiken">
+              <button type="button" data-count="1">1 Grafik</button>
+              <button type="button" data-count="2">2 Grafiken</button>
+              <button type="button" data-count="3">3 Grafiken</button>
+            </div>
+          </div>
+
+          <div class="generate-row">
+            <button id="newIdeasBtn" type="button" disabled>Neue Bildideen generieren</button>
+            <button id="generateBtn" class="primary" disabled>Bild erzeugen</button>
+          </div>
+        </section>
+      </section>
+
+      <aside class="side">
+        <section class="preview-card">
+          <div class="preview" id="latestPreview">
+            <img id="latestPreviewImage" class="latest-preview-image" alt="">
+            <div id="previewPlaceholder" class="preview-placeholder">
+            <div id="previewNumber" class="preview-number">01</div>
+            <div id="previewLessonIcon" class="preview-lesson-icon"></div>
+            <div id="previewDivider" class="preview-divider"></div>
+            <div class="preview-symbol">
+              <div class="symbol-circle">
+                <div class="target-symbol">
+                  <span></span><span></span><span></span>
+                </div>
+              </div>
+            </div>
+            <div class="wave"></div>
+            </div>
+          </div>
+          <p id="latestPreviewCaption">Feste 16:9-Komposition im Referenzstil.</p>
+        </section>
+
+        <section class="panel rules">
+          <h2>Regeln</h2>
+          <ul>
+            <li>Immer 16:9</li>
+            <li>Nur eine Kernaussage</li>
+            <li>Keine Personen</li>
+            <li>Keine Bildtexte</li>
+            <li>Nur CI-Farben</li>
+          </ul>
+        </section>
+      </aside>
+
+      <section class="gallery-section">
+        <div class="section-head">
+          <h2>Galerie</h2>
+          <button id="refreshGallery">Aktualisieren</button>
+        </div>
+        <div id="gallery" class="gallery empty">
+          <p>Noch keine erzeugten Grafiken.</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
