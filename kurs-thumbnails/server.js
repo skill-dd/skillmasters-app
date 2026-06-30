@@ -1,6 +1,6 @@
 import http from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -14,6 +14,25 @@ import {
   referenceImagePath,
   symbolSystem
 } from "../skillmasters-grafikstil/index.js";
+import {
+  createGalleryStore,
+  createPathHelpers,
+  createStaticServer,
+  downloadImage,
+  extractResponseText,
+  isRemovedGrafikenPath,
+  json,
+  loadEnv,
+  matchesRoute,
+  normalizeRequestPath,
+  normalizeRoutePath,
+  notFound,
+  openAI,
+  openAIForm,
+  readJson as parseJsonBody,
+  safeStamp,
+  serveFile
+} from "../skillmasters-grafikstil/server-utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -33,6 +52,22 @@ const APP_PATHS = {
   presentations: normalizeRoutePath(process.env.PRESENTATIONS_PATH || "/__praesentationsfolien")
 };
 const PUBLIC_BASE_PATH = normalizeRoutePath(process.env.PUBLIC_BASE_PATH || "/");
+const { publicAppPaths, withBasePath } = createPathHelpers(APP_PATHS, PUBLIC_BASE_PATH);
+const galleryStore = createGalleryStore({
+  galleryPath,
+  dataDir,
+  filterTypes: {
+    thumbnails: ["course", "chapter", "lesson"],
+    presentations: ["presentation"]
+  },
+  withBasePath
+});
+const serveStatic = createStaticServer({
+  appDir: __dirname,
+  publicDir,
+  sharedStylesPath: path.join(__dirname, "..", "skillmasters-grafikstil", "styles.css"),
+  outputDir: path.join(__dirname, "outputs")
+});
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -54,10 +89,10 @@ const server = http.createServer(async (req, res) => {
       return json(res, await readGallery(url.searchParams.get("app") || ""));
     }
     if (req.method === "POST" && requestPath === "/api/ideas") {
-      return json(res, await createIdeas(await readJson(req)));
+      return json(res, await createIdeas(await parseJsonBody(req, maxJsonBytes)));
     }
     if (req.method === "POST" && requestPath === "/api/generate") {
-      return json(res, await generateImages(await readJson(req)));
+      return json(res, await generateImages(await parseJsonBody(req, maxJsonBytes)));
     }
     if (req.method === "GET" && isRemovedGrafikenPath(requestPath)) {
       return notFound(res);
@@ -136,7 +171,6 @@ async function createIdeas(payload) {
 }
 
 function buildIdeasPrompt(normalized) {
-  if (normalized.type === "presentation") return buildPresentationIdeasPrompt(normalized);
   if (normalized.type === "course") return buildCourseIdeasPrompt(normalized);
   if (normalized.type === "lesson") return buildLessonIdeasPrompt(normalized);
   return buildChapterIdeasPrompt(normalized);
@@ -262,53 +296,10 @@ Antworte ausschliesslich als JSON:
 `.trim();
 }
 
-function buildPresentationIdeasPrompt(normalized) {
-  return `
-Du entwickelst exakt 3 kurze Bildideen fuer eine Skillmasters-Praesentationsgrafik.
-
-Deine Aufgabe ist nicht, den gesamten Sprechertext zu illustrieren, sondern die eine staerkste Kernaussage zu identifizieren und daraus eine einzige, sofort verstaendliche visuelle Metapher zu entwickeln.
-Wichtig: Vereinfache nicht so stark, dass konkrete Kernelemente des Sprechertexts verloren gehen. Wenn der Sprechertext konkrete Objekte, Unterlagen, Artefakte oder Ergebnisse nennt, sollen diese in der Bildidee erhalten bleiben, sofern sie die Kernaussage tragen.
-
-Sprechertext:
-${normalized.text}
-
-Schritt 1 - Analyse:
-Analysiere den Sprechertext und ermittle:
-- die zentrale Botschaft
-- das eigentliche Lernziel
-- die Emotion, die vermittelt werden soll
-- welche Aussage der Zuschauer nach 2 Sekunden verstanden haben soll
-
-Schritt 2 - Verdichtung:
-Pruefe kritisch, ob sich die Bildidee auf eine einzige Kernaussage konzentriert.
-Falls mehrere Aussagen enthalten sind, vereinfache sie so lange, bis eine starke, sofort verstaendliche Metapher uebrig bleibt, aber bewahre die wichtigsten konkreten Sprechertext-Objekte.
-Wenn der Sprechertext eindeutig einen Prozess, eine Entwicklung oder mehrere konkrete Bausteine beschreibt, darf die Metapher maximal 3 einfache, nebeneinander angeordnete Elemente zeigen. Sonst bleibt es bei einer einzigen zentralen Symbol-Metapher.
-
-Stil- und Inhaltsregeln:
-- Keine Menschen, keine Personen.
-- Keine Textelemente im Bild.
-- Gleicher Skillmasters-Grafikstil wie die Referenz.
-- Bildideen sollen sich sichtbar auf den Sprechertext beziehen. Nutze konkrete Motive aus dem Sprechertext, z. B. Dokumente, Konzepte, Kursfundament, Kapitel, Produktion, Ziel, Vorbereitung.
-- Wenn mehrere Grafiken vorgeschlagen werden, beschreibe sie als horizontale Abfolge nebeneinander, nicht gestapelt oder aufeinander.
-- Verwende bevorzugt dieses Symbolsystem und ergaenze es nur wenn wirklich noetig:
-${symbolSystem.map((item) => `${item.symbol} = ${item.meaning}`).join(", ")}
-- Jede Idee nur als ein kurzer deutscher Satz.
-
-Antworte ausschliesslich als JSON:
-{"coreMessage":"...","contentSummary":"...","learningGoal":"...","emotion":"...","visualMetaphor":"...","ideas":["...","...","..."]}
-`.trim();
-}
-
 async function generateImages(payload) {
   const normalized = normalizePayload(payload);
   const typeConfig = assetTypes[normalized.type];
   const count = Math.max(1, Math.min(Number(payload.count || 1), typeConfig.maxImages));
-  const componentCount = normalized.type === "presentation"
-    ? Math.max(1, Math.min(Number(payload.componentCount || 1), 3))
-    : 1;
-  const componentCountRecommendation = normalized.type === "presentation"
-    ? Math.max(1, Math.min(Number(payload.componentCountRecommendation || componentCount), 3))
-    : 1;
   const selectedIdea = String(payload.selectedIdea || "").trim();
   if (!selectedIdea) throw new Error("Bitte zuerst eine Bildidee auswaehlen.");
   if (!process.env.OPENAI_API_KEY) {
@@ -325,8 +316,8 @@ async function generateImages(payload) {
     learningGoal: payload.learningGoal || "",
     emotion: payload.emotion || "",
     visualMetaphor: payload.visualMetaphor || "",
-    componentCount,
-    componentCountRecommendation
+    componentCount: 1,
+    componentCountRecommendation: 1
   }, selectedIdea);
   const saved = [];
   for (let index = 0; index < count; index += 1) {
@@ -345,25 +336,9 @@ async function generateImages(payload) {
     const suffix = count > 1 ? `-${index + 1}` : "";
     const baseName = `${stamp}-${normalized.type}${normalized.number ? `-${normalized.number}` : ""}${normalized.lessonIcon ? `-${normalized.lessonIcon}` : ""}${suffix}`;
     const imageFile = path.join(outputImagesDir, `${baseName}.png`);
-    const svgFile = path.join(outputImagesDir, `${baseName}.svg`);
     const promptFile = path.join(outputPromptsDir, `${baseName}.json`);
     await writeFile(imageFile, buffer);
-    let svg = "";
-    let svgPrompt = "";
-    let svgUrl = "";
-    if (normalized.type === "presentation") {
-      svgPrompt = buildPresentationSvgPrompt({
-        ...normalized,
-        coreMessage: payload.coreMessage || "",
-        learningGoal: payload.learningGoal || "",
-        emotion: payload.emotion || "",
-        visualMetaphor: payload.visualMetaphor || "",
-        componentCount
-      }, selectedIdea);
-      svg = await generatePresentationSvg(svgPrompt);
-      await writeFile(svgFile, svg);
-      svgUrl = withBasePath(`/outputs/images/${baseName}.svg`);
-    }
+    const svgUrl = "";
 
     const promptRecord = {
       createdAt: new Date().toISOString(),
@@ -380,15 +355,13 @@ async function generateImages(payload) {
       learningGoal: payload.learningGoal || "",
       emotion: payload.emotion || "",
       visualMetaphor: payload.visualMetaphor || "",
-      componentCount,
-      componentCountRecommendation,
+      componentCount: 1,
+      componentCountRecommendation: 1,
       selectedIdea,
       prompt,
       svgUrl,
-      svgPrompt,
-      svgPostProcessing: normalized.type === "presentation"
-        ? "Zusätzlich zur PNG wurde eine vereinfachte, echte und editierbare SVG-Version im Skillmasters-Stil erzeugt."
-        : "",
+      svgPrompt: "",
+      svgPostProcessing: "",
       fixedIconPostProcessing: normalized.type === "lesson"
         ? "Das linke Lektionssymbol wurde nach der KI-Generierung als festes SVG pixelgleich in die finale PNG-Datei eingesetzt."
         : "",
@@ -419,7 +392,6 @@ async function generateImages(payload) {
 }
 
 function buildImagePrompt(payload, selectedIdea) {
-  if (payload.type === "presentation") return buildPresentationImagePrompt(payload, selectedIdea);
   if (payload.type === "course") return buildCourseImagePrompt(payload, selectedIdea);
   if (payload.type === "lesson") return buildLessonImagePrompt(payload, selectedIdea);
   return buildChapterImagePrompt(payload, selectedIdea);
@@ -543,127 +515,6 @@ Additional hard rules for lesson thumbnails:
 `.trim();
 }
 
-function buildPresentationImagePrompt(payload, selectedIdea) {
-  return `
-Create one final 16:9 Skillmasters presentation graphic.
-
-Selected metaphor idea:
-${selectedIdea}
-
-Analysis context:
-- Core message: ${payload.coreMessage || ""}
-- Learning goal: ${payload.learningGoal || ""}
-- Emotion: ${payload.emotion || ""}
-- Visual metaphor: ${payload.visualMetaphor || ""}
-
-Composition:
-- No number.
-- No red divider line.
-- No navy wave, no corner wave, no bottom wave.
-- No pale gray background circle. Do not draw any circle behind the symbol.
-- The top 25% of the canvas must be completely empty white space reserved for a later two-line headline. No icon, line, shadow, circle, accent, or graphic may enter this top 25% zone.
-- Place all visual content below the top 25% reserved headline zone.
-- The selected composition must contain exactly ${payload.componentCount || 1} ${Number(payload.componentCount || 1) === 1 ? "single graphic element" : "separate graphic elements"}.
-- If componentCount is 1: show one strong central symbol/metaphor only.
-- If componentCount is 2: show two clearly separated but related graphic elements arranged side by side horizontally, not stacked and not overlapping.
-- If componentCount is 3: show at most three simple process steps arranged side by side horizontally, not stacked and not overlapping; only use this when the idea/process justifies it.
-- The visual elements must remain meaningfully tied to the speaker text. Preserve concrete objects from the selected idea instead of replacing them with generic symbols.
-- The image must be understandable in two seconds and work without text.
-- Use clean navy line art, small red accents, and the same plastic depth as the reference.
-
-${lockedStyle}
-
-Additional hard rules for presentation graphics:
-- Absolutely no text, labels, letters, numbers, UI, captions, or title.
-- Absolutely no people.
-- Absolutely no wave shape.
-- Absolutely no pale gray circle or circular background shape.
-- Absolutely keep the upper 25% blank white.
-- Multiple graphic elements must be next to each other horizontally, never on top of each other.
-`.trim();
-}
-
-function buildPresentationSvgPrompt(payload, selectedIdea) {
-  return `
-Create a real editable SVG illustration for a Skillmasters presentation graphic.
-
-Return only raw SVG markup. Do not wrap it in markdown. Do not explain anything.
-
-Selected metaphor idea:
-${selectedIdea}
-
-Analysis context:
-- Core message: ${payload.coreMessage || ""}
-- Learning goal: ${payload.learningGoal || ""}
-- Emotion: ${payload.emotion || ""}
-- Visual metaphor: ${payload.visualMetaphor || ""}
-- Component count: ${payload.componentCount || 1}
-
-SVG requirements:
-- Root must be: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1536 864" width="1536" height="864">
-- White background rectangle covering the full canvas.
-- Keep the top 25% of the canvas completely blank white for a later two-line headline.
-- Place all illustration elements below y=216.
-- Use only these colors: ${CI.navy}, ${CI.red}, ${CI.white}. You may use opacity, but no other color values.
-- No text, no labels, no words, no letters, no numbers, and no <text> elements.
-- No people, no faces, no hands, no body parts.
-- No gray circle, no background circle, no wave, no corner wave.
-- Build a simplified editable vector version of the selected idea.
-- Use clean navy strokes, white fills, and small red accents.
-- Add subtle plastic depth only with SVG filters using ${CI.navy} as flood-color with low opacity.
-- If component count is 1: create one central metaphor.
-- If component count is 2: create two separate horizontal graphic elements.
-- If component count is 3: create three simple horizontal process elements.
-- Multiple elements must be arranged side by side, not stacked and not overlapping.
-- Keep shapes simple and editable: path, line, polyline, polygon, rect, circle, ellipse, g, defs, filter are acceptable.
-- No external images, no embedded raster images, no external URLs.
-
-The SVG must be understandable in two seconds and fit the Skillmasters reference style.
-`.trim();
-}
-
-async function generatePresentationSvg(svgPrompt) {
-  const result = await openAI("/v1/responses", {
-    model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
-    input: svgPrompt
-  });
-  const raw = extractResponseText(result);
-  const svg = normalizeSvgMarkup(raw);
-  validatePresentationSvg(svg);
-  return `${svg}\n`;
-}
-
-function normalizeSvgMarkup(value) {
-  let svg = String(value || "").trim();
-  svg = svg.replace(/^```(?:svg|xml)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  const start = svg.indexOf("<svg");
-  const end = svg.lastIndexOf("</svg>");
-  if (start !== -1 && end !== -1) {
-    svg = svg.slice(start, end + "</svg>".length).trim();
-  }
-  return svg;
-}
-
-function validatePresentationSvg(svg) {
-  if (!svg.trim().startsWith("<svg")) throw new Error("SVG-Ausgabe ist ungueltig: kein <svg>-Root.");
-  if (!svg.includes("</svg>")) throw new Error("SVG-Ausgabe ist ungueltig: </svg> fehlt.");
-  if (/<script\b/i.test(svg)) throw new Error("SVG-Ausgabe ist ungueltig: script-Tags sind nicht erlaubt.");
-  if (/<text\b/i.test(svg)) throw new Error("SVG-Ausgabe ist ungueltig: Text-Elemente sind nicht erlaubt.");
-  if (/<image\b/i.test(svg)) throw new Error("SVG-Ausgabe ist ungueltig: Rasterbilder sind nicht erlaubt.");
-  if (/\b(?:href|src)\s*=\s*["']https?:\/\//i.test(svg)) throw new Error("SVG-Ausgabe ist ungueltig: externe Links sind nicht erlaubt.");
-  const withoutXmlns = svg.replace(/xmlns=["']http:\/\/www\.w3\.org\/2000\/svg["']/gi, "");
-  if (/https?:\/\//i.test(withoutXmlns)) throw new Error("SVG-Ausgabe ist ungueltig: externe URLs sind nicht erlaubt.");
-  if (/url\(\s*['"]?(?!#)/i.test(svg)) throw new Error("SVG-Ausgabe ist ungueltig: externe url()-Referenzen sind nicht erlaubt.");
-
-  const allowed = new Set([CI.navy.toLowerCase(), CI.red.toLowerCase(), CI.white.toLowerCase()]);
-  const colors = svg.match(/#[0-9a-fA-F]{3,8}\b/g) || [];
-  for (const color of colors) {
-    if (!allowed.has(color.toLowerCase())) {
-      throw new Error(`SVG-Ausgabe ist ungueltig: Farbe ${color} ist nicht erlaubt.`);
-    }
-  }
-}
-
 async function generateOpenAIImage(prompt) {
   if (existsSync(referenceImagePath)) {
     try {
@@ -760,48 +611,6 @@ async function applyLessonIcon(buffer, iconId) {
     .toBuffer();
 }
 
-async function openAI(endpoint, body) {
-  const response = await fetch(`https://api.openai.com${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify(body)
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error?.message || `OpenAI-Fehler ${response.status}`);
-  }
-  return data;
-}
-
-async function openAIForm(endpoint, form) {
-  const response = await fetch(`https://api.openai.com${endpoint}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: form
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error?.message || `OpenAI-Fehler ${response.status}`);
-  }
-  return data;
-}
-
-function extractResponseText(result) {
-  if (result.output_text) return result.output_text;
-  const parts = [];
-  for (const item of result.output || []) {
-    for (const content of item.content || []) {
-      if (content.type === "output_text" && content.text) parts.push(content.text);
-    }
-  }
-  return parts.join("\n").trim();
-}
-
 function cleanIdeaText(value) {
   return String(value || "")
     .replace(/^\s*(thumbnail-idee|bildidee|hauptmotiv)\s*\d*\s*[:.-]\s*/i, "")
@@ -813,205 +622,28 @@ function cleanIdeaText(value) {
 }
 
 function localIdeas(payload) {
-  if (payload.type === "course" || payload.type === "chapter" || payload.type === "lesson") {
-    const title = payload.title || payload.text;
-    const context = payload.context ? ` im Kontext ${payload.context}` : "";
-    return {
-      ...payload,
-      coreMessage: `${title} wird als konkreter fachlicher Einstieg verstanden.`,
-      contentSummary: payload.contentSummary || `Der Titel beschreibt ein kompaktes Lernstueck${context}, das zentrale Begriffe, Ablauf oder Rollen klaert.`,
-      learningGoal: payload.learningGoal || "Der Zuschauer versteht, worum es in dieser Einheit fachlich geht und worauf er achten soll.",
-      emotion: "Klarheit",
-      visualMetaphor: payload.visualMetaphor || "Ein konkretes Arbeits- oder Prozessartefakt visualisiert den Kern des Titels.",
-      ideas: [
-        "Ein grosser Projektordner mit einem farbigen Registertab.",
-        "Ein robuster Werkzeugkasten mit einem hervorgehobenen Werkzeug.",
-        "Ein schlichtes Qualitaetssiegel mit kleinem roten Akzent."
-      ],
-      note: "Lokale Vorschlaege, weil noch kein OPENAI_API_KEY gesetzt ist."
-    };
-  }
-
-  const lower = payload.text.toLowerCase();
-  const symbol = lower.includes("strategie") ? "Kompass"
-    : lower.includes("fehler") || lower.includes("risiko") ? "Warnschild"
-    : lower.includes("analyse") || lower.includes("daten") ? "Lupe"
-    : lower.includes("wachstum") || lower.includes("skal") ? "Rakete"
-    : lower.includes("entscheidung") ? "Wegweiser"
-    : lower.includes("wissen") || lower.includes("lernen") ? "Buch"
-    : "Zielscheibe";
+  const title = payload.title || payload.text;
+  const context = payload.context ? ` im Kontext ${payload.context}` : "";
   return {
     ...payload,
-    coreMessage: "Eine zentrale Aussage aus dem Sprechertext wird als einfache Metapher verdichtet.",
-    learningGoal: payload.type === "presentation" ? "Der Zuschauer versteht die wichtigste Lernbotschaft auf einen Blick." : "",
-    emotion: payload.type === "presentation" ? "Klarheit" : "",
-    visualMetaphor: payload.type === "presentation" ? `${symbol} als einfache visuelle Metapher.` : "",
+    coreMessage: `${title} wird als konkreter fachlicher Einstieg verstanden.`,
+    contentSummary: payload.contentSummary || `Der Titel beschreibt ein kompaktes Lernstueck${context}, das zentrale Begriffe, Ablauf oder Rollen klaert.`,
+    learningGoal: payload.learningGoal || "Der Zuschauer versteht, worum es in dieser Einheit fachlich geht und worauf er achten soll.",
+    emotion: "Klarheit",
+    visualMetaphor: payload.visualMetaphor || "Ein konkretes Arbeits- oder Prozessartefakt visualisiert den Kern des Titels.",
     ideas: [
-      `${symbol} als klares Hauptsymbol fuer die wichtigste Aussage.`,
-      `Leuchtturm mit ruhiger Lichtmarkierung als Zeichen fuer Orientierung.`,
-      `Wegweiser mit einer hervorgehobenen Richtung als Bild fuer die naechste Entscheidung.`
+      "Ein grosser Projektordner mit einem farbigen Registertab.",
+      "Ein robuster Werkzeugkasten mit einem hervorgehobenen Werkzeug.",
+      "Ein schlichtes Qualitaetssiegel mit kleinem roten Akzent."
     ],
     note: "Lokale Vorschlaege, weil noch kein OPENAI_API_KEY gesetzt ist."
   };
 }
 
-async function downloadImage(url) {
-  if (!url) return null;
-  const response = await fetch(url);
-  if (!response.ok) return null;
-  return Buffer.from(await response.arrayBuffer());
-}
-
-async function readJson(req) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > maxJsonBytes) {
-      const error = new Error("Anfrage ist zu gross.");
-      error.status = 413;
-      throw error;
-    }
-    chunks.push(chunk);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-  } catch {
-    const error = new Error("Ungueltiges JSON.");
-    error.status = 400;
-    throw error;
-  }
-}
-
 async function readGallery(app = "") {
-  if (!existsSync(galleryPath)) return [];
-  const text = await readFile(galleryPath, "utf8");
-  const entries = text.trim() ? JSON.parse(text) : [];
-  if (!Array.isArray(entries)) return [];
-  return filterGallery(entries, app).map((item) => ({
-    ...item,
-    imageUrl: withBasePath(item.imageUrl),
-    svgUrl: item.svgUrl ? withBasePath(item.svgUrl) : "",
-    promptUrl: withBasePath(item.promptUrl)
-  }));
+  return galleryStore.read(app);
 }
 
 async function writeGallery(entries) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(galleryPath, `${JSON.stringify(entries, null, 2)}\n`);
-}
-
-function filterGallery(entries, app) {
-  if (app === "thumbnails") return entries.filter((item) => item.type === "course" || item.type === "chapter" || item.type === "lesson");
-  if (app === "presentations") return entries.filter((item) => item.type === "presentation");
-  return entries;
-}
-
-function serveStatic(requestPath, res) {
-  const cleanPath = decodeURIComponent(requestPath === "/" ? "/index.html" : requestPath);
-  if (cleanPath === "/shared/styles.css") {
-    return serveFile(path.join(__dirname, "..", "skillmasters-grafikstil", "styles.css"), res);
-  }
-  const isOutput = cleanPath.startsWith("/outputs/");
-  const root = path.resolve(isOutput ? path.join(__dirname, "outputs") : publicDir);
-  const relativePath = isOutput ? cleanPath.slice("/outputs/".length) : cleanPath.replace(/^\/+/, "");
-  const filePath = path.resolve(root, relativePath);
-  if (!isInsidePath(root, filePath)) return json(res, { error: "Nicht erlaubt" }, 403);
-
-  serveFile(filePath, res);
-}
-
-function isInsidePath(root, filePath) {
-  return filePath === root || filePath.startsWith(`${root}${path.sep}`);
-}
-
-function serveFile(filePath, res) {
-  readFile(filePath)
-    .then((content) => {
-      res.writeHead(200, { "Content-Type": mime(filePath) });
-      res.end(content);
-    })
-    .catch(() => notFound(res));
-}
-
-function notFound(res) {
-  res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-  res.end("Nicht gefunden");
-}
-
-function withBasePath(urlPath) {
-  const cleanPath = `/${String(urlPath || "").replace(/^\/+/, "")}`;
-  if (PUBLIC_BASE_PATH === "/") return cleanPath;
-  if (cleanPath === PUBLIC_BASE_PATH || cleanPath.startsWith(`${PUBLIC_BASE_PATH}/`)) return cleanPath;
-  return `${PUBLIC_BASE_PATH}${cleanPath}`;
-}
-
-function normalizeRoutePath(value) {
-  const trimmed = String(value || "").trim();
-  if (!trimmed || trimmed === "/") return "/";
-  return `/${trimmed.replace(/^\/+|\/+$/g, "")}`;
-}
-
-function normalizeRequestPath(value) {
-  const pathname = decodeURIComponent(value || "/");
-  if (pathname !== "/" && pathname.endsWith("/")) return pathname.slice(0, -1);
-  return pathname || "/";
-}
-
-function matchesRoute(requestPath, routePath) {
-  return requestPath === routePath;
-}
-
-function isRemovedGrafikenPath(requestPath) {
-  return requestPath === "/grafiken" || requestPath.startsWith("/grafiken/");
-}
-
-function publicAppPaths() {
-  return {
-    portal: displayRoutePath(APP_PATHS.portal),
-    thumbnails: displayRoutePath(APP_PATHS.thumbnails),
-    presentations: displayRoutePath(APP_PATHS.presentations)
-  };
-}
-
-function displayRoutePath(routePath) {
-  return routePath === "/" ? "/" : `${routePath}/`;
-}
-
-function json(res, data, status = 200) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(data));
-}
-
-function mime(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  return {
-    ".html": "text/html; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".svg": "image/svg+xml; charset=utf-8",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp"
-  }[ext] || "application/octet-stream";
-}
-
-function safeStamp() {
-  return new Date().toISOString().replace(/[:.]/g, "-");
-}
-
-function loadEnv(envPath) {
-  if (!existsSync(envPath)) return;
-  const text = readFileSync(envPath, "utf8");
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
-    if (!process.env[key]) process.env[key] = value;
-  }
+  await galleryStore.write(entries);
 }

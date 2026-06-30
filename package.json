@@ -7,7 +7,7 @@
     "dev:portal": "node portal/server.js",
     "dev:thumbnails": "node kurs-thumbnails/server.js",
     "dev:praesentationen": "node praesentationsfolien/server.js",
-    "check": "node --check portal/server.js && node --check kurs-thumbnails/server.js && node --check kurs-thumbnails/public/app.js && node --check praesentationsfolien/server.js && node --check praesentationsfolien/public/app.js && node --check skillmasters-grafikstil/index.js"
+    "check": "node --check portal/server.js && node --check kurs-thumbnails/server.js && node --check kurs-thumbnails/public/app.js && node --check praesentationsfolien/server.js && node --check praesentationsfolien/public/app.js && node --check skillmasters-grafikstil/index.js && node --check skillmasters-grafikstil/server-utils.js"
   },
   "engines": {
     "node": ">=20"

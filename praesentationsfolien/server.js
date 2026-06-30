@@ -1,19 +1,34 @@
 import http from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import sharp from "sharp";
 import {
   CI,
   assetTypes,
-  lessonIcons,
-  lessonIconSvg,
-  lessonWaveSvg,
   lockedStyle,
   referenceImagePath,
   symbolSystem
 } from "../skillmasters-grafikstil/index.js";
+import {
+  createGalleryStore,
+  createPathHelpers,
+  createStaticServer,
+  downloadImage,
+  extractResponseText,
+  isRemovedGrafikenPath,
+  json,
+  loadEnv,
+  matchesRoute,
+  normalizeRequestPath,
+  normalizeRoutePath,
+  notFound,
+  openAI,
+  openAIForm,
+  readJson as parseJsonBody,
+  safeStamp,
+  serveFile
+} from "../skillmasters-grafikstil/server-utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -33,6 +48,22 @@ const APP_PATHS = {
   presentations: normalizeRoutePath(process.env.PRESENTATIONS_PATH || "/")
 };
 const PUBLIC_BASE_PATH = normalizeRoutePath(process.env.PUBLIC_BASE_PATH || "/");
+const { publicAppPaths, withBasePath } = createPathHelpers(APP_PATHS, PUBLIC_BASE_PATH);
+const galleryStore = createGalleryStore({
+  galleryPath,
+  dataDir,
+  filterTypes: {
+    thumbnails: ["course", "chapter", "lesson"],
+    presentations: ["presentation"]
+  },
+  withBasePath
+});
+const serveStatic = createStaticServer({
+  appDir: __dirname,
+  publicDir,
+  sharedStylesPath: path.join(__dirname, "..", "skillmasters-grafikstil", "styles.css"),
+  outputDir: path.join(__dirname, "outputs")
+});
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -42,7 +73,6 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && requestPath === "/api/config") {
       return json(res, {
         assetTypes,
-        lessonIcons,
         symbolSystem,
         ci: CI,
         imageSize: process.env.OPENAI_IMAGE_SIZE || "1536x864",
@@ -54,10 +84,10 @@ const server = http.createServer(async (req, res) => {
       return json(res, await readGallery(url.searchParams.get("app") || ""));
     }
     if (req.method === "POST" && requestPath === "/api/ideas") {
-      return json(res, await createIdeas(await readJson(req)));
+      return json(res, await createIdeas(await parseJsonBody(req, maxJsonBytes)));
     }
     if (req.method === "POST" && requestPath === "/api/generate") {
-      return json(res, await generateImages(await readJson(req)));
+      return json(res, await generateImages(await parseJsonBody(req, maxJsonBytes)));
     }
     if (req.method === "GET" && isRemovedGrafikenPath(requestPath)) {
       return notFound(res);
@@ -136,80 +166,7 @@ async function createIdeas(payload) {
 }
 
 function buildIdeasPrompt(normalized) {
-  if (normalized.type === "presentation") return buildPresentationIdeasPrompt(normalized);
-  if (normalized.type === "lesson") return buildLessonIdeasPrompt(normalized);
-  return buildChapterIdeasPrompt(normalized);
-}
-
-function buildChapterIdeasPrompt(normalized) {
-  return `
-Du entwickelst Inhalt und exakt 3 konkrete Bildideen fuer ein Skillmasters-Kapitel-Thumbnail.
-
-Einsatzart: ${assetTypes[normalized.type].label}
-Kapitelnummer: ${normalized.number || "keine"}
-Titel:
-${normalized.title}
-Optionaler Kurs-/Fachkontext:
-${normalized.context || "nicht angegeben"}
-Vorhandene Nutzerkorrektur zur Inhaltsannahme:
-${normalized.contentSummary || "keine"}
-Vorhandene Nutzerkorrektur zum Lernziel:
-${normalized.learningGoal || "keine"}
-Vorhandene Nutzerkorrektur zur visuellen Metapher:
-${normalized.visualMetaphor || "keine"}
-
-Aufgabe:
-- Leite aus dem kurzen Titel eine plausible fachliche Inhaltsannahme ab.
-- Erfinde keine spezifischen Fakten, Normen, Foerderbedingungen, Paragraphen oder Produktdetails.
-- Wenn der Titel mehrdeutig ist, bleibe allgemein und nutze den optionalen Kontext.
-- Formuliere eine klare Kernaussage und ein konkretes Lernziel.
-- Entwickle eine visuelle Metapher, die aus dem Fachinhalt kommt, nicht aus generischen Standard-Icons.
-- Bevorzuge konkrete Motive wie Unterlagen, Checklisten, Ablaufstationen, Rollenmarkierungen, Modellbausteine, Sicherheitszeichen, Qualitaetspruefung, Projektartefakte, Entscheidungsunterlagen, Prozessuebergaben oder Arbeitsmittel.
-- Verwende Kompass, Rakete, Leuchtturm, Wegweiser, Zielscheibe und Lupe nur, wenn sie wirklich aus dem Titel folgen.
-- Keine Menschen, keine Personen.
-- Keine Textelemente im Bild.
-- Jede Idee muss ein anderes konkretes Motiv verwenden.
-- Jede Idee erklaert in einem kurzen deutschen Satz sichtbar, welchen Inhalt sie visualisiert.
-
-Antworte ausschliesslich als JSON:
-{"coreMessage":"...","contentSummary":"...","learningGoal":"...","emotion":"","visualMetaphor":"...","ideas":["...","...","..."]}
-`.trim();
-}
-
-function buildLessonIdeasPrompt(normalized) {
-  return `
-Du entwickelst Inhalt und exakt 3 konkrete Bildideen fuer ein Skillmasters-Lektion-Thumbnail.
-
-Einsatzart: ${assetTypes[normalized.type].label}
-Festes Lektionssymbol links: ${normalized.lessonIconLabel}
-Titel:
-${normalized.title}
-Optionaler Kurs-/Fachkontext:
-${normalized.context || "nicht angegeben"}
-Vorhandene Nutzerkorrektur zur Inhaltsannahme:
-${normalized.contentSummary || "keine"}
-Vorhandene Nutzerkorrektur zum Lernziel:
-${normalized.learningGoal || "keine"}
-Vorhandene Nutzerkorrektur zur visuellen Metapher:
-${normalized.visualMetaphor || "keine"}
-
-Aufgabe:
-- Leite aus dem kurzen Titel eine plausible fachliche Inhaltsannahme ab.
-- Erfinde keine spezifischen Fakten, Normen, Foerderbedingungen, Paragraphen oder Produktdetails.
-- Wenn der Titel mehrdeutig ist, bleibe allgemein und nutze den optionalen Kontext.
-- Formuliere eine klare Kernaussage und ein konkretes Lernziel.
-- Entwickle eine visuelle Metapher fuer die rechte Bildseite, die aus dem Fachinhalt kommt.
-- Das feste Lektionssymbol links ist nur die Typ-Markierung und darf nicht Teil der Bildidee sein.
-- Bevorzuge konkrete Motive wie Unterlagen, Checklisten, Ablaufstationen, Rollenmarkierungen, Modellbausteine, Sicherheitszeichen, Qualitaetspruefung, Projektartefakte, Entscheidungsunterlagen, Prozessuebergaben oder Arbeitsmittel.
-- Verwende Kompass, Rakete, Leuchtturm, Wegweiser, Zielscheibe und Lupe nur, wenn sie wirklich aus dem Titel folgen.
-- Keine Menschen, keine Personen.
-- Keine Textelemente im Bild.
-- Jede Idee muss ein anderes konkretes Motiv verwenden.
-- Jede Idee erklaert in einem kurzen deutschen Satz sichtbar, welchen Inhalt sie visualisiert.
-
-Antworte ausschliesslich als JSON:
-{"coreMessage":"...","contentSummary":"...","learningGoal":"...","emotion":"","visualMetaphor":"...","ideas":["...","...","..."]}
-`.trim();
+  return buildPresentationIdeasPrompt(normalized);
 }
 
 function buildPresentationIdeasPrompt(normalized) {
@@ -287,41 +244,32 @@ async function generateImages(payload) {
       ? Buffer.from(item.b64_json, "base64")
       : await downloadImage(item?.url);
     if (!buffer) throw new Error("Die Bild-API hat kein Bild zurueckgegeben.");
-    if (normalized.type === "lesson") {
-      buffer = await applyLessonIcon(buffer, normalized.lessonIcon);
-    }
 
     const stamp = safeStamp();
     const suffix = count > 1 ? `-${index + 1}` : "";
-    const baseName = `${stamp}-${normalized.type}${normalized.number ? `-${normalized.number}` : ""}${normalized.lessonIcon ? `-${normalized.lessonIcon}` : ""}${suffix}`;
+    const baseName = `${stamp}-${normalized.type}${suffix}`;
     const imageFile = path.join(outputImagesDir, `${baseName}.png`);
     const svgFile = path.join(outputImagesDir, `${baseName}.svg`);
     const promptFile = path.join(outputPromptsDir, `${baseName}.json`);
     await writeFile(imageFile, buffer);
-    let svg = "";
     let svgPrompt = "";
     let svgUrl = "";
-    if (normalized.type === "presentation") {
-      svgPrompt = buildPresentationSvgPrompt({
-        ...normalized,
-        coreMessage: payload.coreMessage || "",
-        learningGoal: payload.learningGoal || "",
-        emotion: payload.emotion || "",
-        visualMetaphor: payload.visualMetaphor || "",
-        componentCount
-      }, selectedIdea);
-      svg = await generatePresentationSvg(svgPrompt);
-      await writeFile(svgFile, svg);
-      svgUrl = withBasePath(`/outputs/images/${baseName}.svg`);
-    }
+    svgPrompt = buildPresentationSvgPrompt({
+      ...normalized,
+      coreMessage: payload.coreMessage || "",
+      learningGoal: payload.learningGoal || "",
+      emotion: payload.emotion || "",
+      visualMetaphor: payload.visualMetaphor || "",
+      componentCount
+    }, selectedIdea);
+    const svg = await generatePresentationSvg(svgPrompt);
+    await writeFile(svgFile, svg);
+    svgUrl = withBasePath(`/outputs/images/${baseName}.svg`);
 
     const promptRecord = {
       createdAt: new Date().toISOString(),
       type: normalized.type,
       typeLabel: typeConfig.label,
-      number: normalized.number,
-      lessonIcon: normalized.lessonIcon,
-      lessonIconLabel: normalized.lessonIconLabel,
       title: normalized.title,
       context: normalized.context,
       text: normalized.text,
@@ -336,12 +284,8 @@ async function generateImages(payload) {
       prompt,
       svgUrl,
       svgPrompt,
-      svgPostProcessing: normalized.type === "presentation"
-        ? "Zusätzlich zur PNG wurde eine vereinfachte, echte und editierbare SVG-Version im Skillmasters-Stil erzeugt."
-        : "",
-      fixedIconPostProcessing: normalized.type === "lesson"
-        ? "Das linke Lektionssymbol wurde nach der KI-Generierung als festes SVG pixelgleich in die finale PNG-Datei eingesetzt."
-        : "",
+      svgPostProcessing: "Zusätzlich zur PNG wurde eine vereinfachte, echte und editierbare SVG-Version im Skillmasters-Stil erzeugt.",
+      fixedIconPostProcessing: "",
       styleReference: "assets/thumbnail-referenzbild.png",
       imageSize: process.env.OPENAI_IMAGE_SIZE || "1536x864",
       ci: CI
@@ -353,9 +297,6 @@ async function generateImages(payload) {
       createdAt: promptRecord.createdAt,
       type: normalized.type,
       typeLabel: typeConfig.label,
-      number: normalized.number,
-      lessonIcon: normalized.lessonIcon,
-      lessonIconLabel: normalized.lessonIconLabel,
       selectedIdea,
       imageUrl: withBasePath(`/outputs/images/${baseName}.png`),
       svgUrl,
@@ -369,78 +310,7 @@ async function generateImages(payload) {
 }
 
 function buildImagePrompt(payload, selectedIdea) {
-  if (payload.type === "presentation") return buildPresentationImagePrompt(payload, selectedIdea);
-  if (payload.type === "lesson") return buildLessonImagePrompt(payload, selectedIdea);
-  return buildChapterImagePrompt(payload, selectedIdea);
-}
-
-function buildChapterImagePrompt(payload, selectedIdea) {
-  return `
-Create one final 16:9 Skillmasters course graphic.
-
-Selected metaphor idea:
-${selectedIdea}
-
-Thumbnail input:
-- Title: ${payload.title || ""}
-- Context: ${payload.context || ""}
-- Assumed content: ${payload.contentSummary || payload.coreMessage || ""}
-- Learning goal: ${payload.learningGoal || ""}
-- Visual metaphor: ${payload.visualMetaphor || ""}
-
-Include the large two-digit number "${payload.number}" on the left, in ${CI.navy}. Place it like Bild03: left edge around 5-7% of canvas width, top around 15-17%, height around 52-58% of canvas. Add one thin vertical red divider line close to the number, at about 25% of canvas width, from about 18% to 72% of canvas height. The number is the only text-like element allowed.
-
-Composition:
-- Number on the left, red divider line close to the number, large central symbol on the right.
-- Increase the actual symbol size to 200% compared with the previous generated result. It should dominate the right half while still leaving white space.
-- Use the Bild03 layout proportions, but enlarge the icon: icon center around x=68%, y=43%; pale circle behind it around 46-54% canvas height; navy wave small like Bild11, tucked into the lower-right corner with only slight overlap allowed.
-- Match the layout of Bild03 / reference tile 08: large number at far left, red divider close to the number, icon group on the right.
-- The red divider sits close to the number: around 24-27% from the left edge, not near the center of the canvas.
-- Use one single central symbol only; never merge two symbols, for example never combine lighthouse plus compass.
-- The icon must stay simple, but not small: no oversized floor object, no complex base, no full scene.
-- Make the core message instantly visible.
-- Include the fixed small navy wave in the lower-right corner.
-
-${lockedStyle}
-`.trim();
-}
-
-function buildLessonImagePrompt(payload, selectedIdea) {
-  return `
-Create one final 16:9 Skillmasters lesson thumbnail graphic.
-
-Selected metaphor idea for the right-side illustration:
-${selectedIdea}
-
-Thumbnail input:
-- Title: ${payload.title || ""}
-- Context: ${payload.context || ""}
-- Assumed content: ${payload.contentSummary || payload.coreMessage || ""}
-- Learning goal: ${payload.learningGoal || ""}
-- Visual metaphor: ${payload.visualMetaphor || ""}
-
-The fixed lesson icon "${payload.lessonIconLabel}" will be added later by the server. Do not draw this icon yourself.
-
-Composition:
-- No number.
-- Leave the entire left icon area blank white from x=4% to x=22% and y=12% to y=70%. Do not place any symbol, mark, shadow, text, number, or decoration there.
-- Add one thin vertical red divider line close to the blank icon area, at about 25% of canvas width, from about 18% to 72% of canvas height.
-- Large central symbol on the right, using the selected metaphor idea.
-- Increase the actual right-side symbol size to 200% compared with small generated thumbnails. It should dominate the right half while still leaving white space.
-- Use the Bild03 layout proportions: icon center around x=68%, y=43%; pale circle behind it around 46-54% canvas height; navy wave much smaller than Bild11, tucked tightly into the lower-right corner with minimal overlap only.
-- Match the reference tile layout: left marker area, red divider close to it, icon group on the right.
-- The red divider sits around 24-27% from the left edge, not near the center of the canvas.
-- Use one single central metaphor symbol on the right; never merge unrelated full symbols.
-- The right icon must stay simple, but not small: no oversized floor object, no complex base, no full scene.
-- Make the core message instantly visible.
-- Include a small fixed navy wave in the lower-right corner: about 25-28% canvas width and 34-38% canvas height, still smaller and lower than the chapter-thumbnail wave.
-
-${lockedStyle}
-
-Additional hard rules for lesson thumbnails:
-- Absolutely no text, labels, letters, or numbers.
-- Do not draw any left-side icon. The server will place the fixed pixel-identical lesson symbol after generation.
-`.trim();
+  return buildPresentationImagePrompt(payload, selectedIdea);
 }
 
 function buildPresentationImagePrompt(payload, selectedIdea) {
@@ -594,134 +464,25 @@ function normalizePayload(payload) {
   const type = String(payload.type || "").trim();
   if (!assetTypes[type]) throw new Error("Bitte eine gueltige Einsatzart auswaehlen.");
   if (type !== "presentation") throw new Error("Diese App erzeugt nur Praesentationsfolien.");
-  const typeConfig = assetTypes[type];
-  const isThumbnail = type === "chapter" || type === "lesson";
-  const title = isThumbnail ? String(payload.title || payload.text || "").trim() : "";
-  const context = isThumbnail ? String(payload.context || "").trim() : "";
-  const text = isThumbnail ? title : String(payload.text || "").trim();
-  if (isThumbnail && title.length < 3) throw new Error("Bitte einen Titel eingeben.");
-  if (!isThumbnail && text.length < 20) throw new Error("Bitte einen Sprechertext mit mindestens 20 Zeichen eingeben.");
-  const number = typeConfig.needsNumber ? normalizeNumber(payload.number) : "";
-  const lessonIcon = typeConfig.needsLessonIcon ? normalizeLessonIcon(payload.lessonIcon) : "";
-  const lessonIconLabel = lessonIcon ? lessonIcons.find((icon) => icon.id === lessonIcon).label : "";
+  const text = String(payload.text || "").trim();
+  if (text.length < 20) throw new Error("Bitte einen Sprechertext mit mindestens 20 Zeichen eingeben.");
   return {
     type,
-    title,
-    context,
+    title: "",
+    context: "",
     text,
     contentSummary: String(payload.contentSummary || "").trim(),
     coreMessage: String(payload.coreMessage || "").trim(),
     learningGoal: String(payload.learningGoal || "").trim(),
     emotion: String(payload.emotion || "").trim(),
     visualMetaphor: String(payload.visualMetaphor || "").trim(),
-    number,
-    lessonIcon,
-    lessonIconLabel
+    number: "",
+    lessonIcon: "",
+    lessonIconLabel: ""
   };
 }
 
-function normalizeNumber(value) {
-  const digits = String(value || "").replace(/\D/g, "");
-  if (!digits) throw new Error("Bitte eine Nummer eingeben.");
-  return digits.padStart(2, "0").slice(-2);
-}
-
-function normalizeLessonIcon(value) {
-  const id = String(value || "").trim();
-  if (!lessonIcons.some((icon) => icon.id === id)) {
-    throw new Error("Bitte ein gueltiges Lektionssymbol auswaehlen.");
-  }
-  return id;
-}
-
-async function applyLessonIcon(buffer, iconId) {
-  const metadata = await sharp(buffer).metadata();
-  const width = metadata.width || 1536;
-  const height = metadata.height || 864;
-  const scale = width / 1536;
-  const overlaySize = Math.round(392 * scale);
-  const left = Math.round(28 * scale);
-  const top = Math.round((height - overlaySize) / 2);
-  const cleanPlate = Buffer.from(`
-    <svg width="${overlaySize}" height="${overlaySize}" viewBox="0 0 270 270" xmlns="http://www.w3.org/2000/svg">
-      <rect width="270" height="270" fill="${CI.white}"/>
-    </svg>
-  `);
-  const icon = Buffer.from(lessonIconSvg(iconId, overlaySize));
-  const wave = Buffer.from(lessonWaveSvg(width, height));
-
-  return sharp(buffer)
-    .composite([
-      { input: wave, left: 0, top: 0 },
-      { input: cleanPlate, left, top },
-      { input: icon, left, top }
-    ])
-    .png()
-    .toBuffer();
-}
-
-async function openAI(endpoint, body) {
-  const response = await fetch(`https://api.openai.com${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify(body)
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error?.message || `OpenAI-Fehler ${response.status}`);
-  }
-  return data;
-}
-
-async function openAIForm(endpoint, form) {
-  const response = await fetch(`https://api.openai.com${endpoint}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: form
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error?.message || `OpenAI-Fehler ${response.status}`);
-  }
-  return data;
-}
-
-function extractResponseText(result) {
-  if (result.output_text) return result.output_text;
-  const parts = [];
-  for (const item of result.output || []) {
-    for (const content of item.content || []) {
-      if (content.type === "output_text" && content.text) parts.push(content.text);
-    }
-  }
-  return parts.join("\n").trim();
-}
-
 function localIdeas(payload) {
-  if (payload.type === "chapter" || payload.type === "lesson") {
-    const title = payload.title || payload.text;
-    const context = payload.context ? ` im Kontext ${payload.context}` : "";
-    return {
-      ...payload,
-      coreMessage: `${title} wird als konkreter fachlicher Einstieg verstanden.`,
-      contentSummary: payload.contentSummary || `Der Titel beschreibt ein kompaktes Lernstueck${context}, das zentrale Begriffe, Ablauf oder Rollen klaert.`,
-      learningGoal: payload.learningGoal || "Der Zuschauer versteht, worum es in dieser Einheit fachlich geht und worauf er achten soll.",
-      emotion: "Klarheit",
-      visualMetaphor: payload.visualMetaphor || "Ein konkretes Arbeits- oder Prozessartefakt visualisiert den Kern des Titels.",
-      ideas: [
-        `Eine geordnete Arbeitsunterlage mit markierten Bausteinen visualisiert die Struktur hinter "${title}".`,
-        `Drei klare Prozessstationen mit einem hervorgehobenen Uebergabepunkt zeigen den fachlichen Ablauf von "${title}".`,
-        `Ein Pruefbogen mit einem einzelnen hervorgehobenen Kernbereich zeigt, worauf es bei "${title}" ankommt.`
-      ],
-      note: "Lokale Vorschlaege, weil noch kein OPENAI_API_KEY gesetzt ist."
-    };
-  }
-
   const lower = payload.text.toLowerCase();
   const symbol = lower.includes("strategie") ? "Kompass"
     : lower.includes("fehler") || lower.includes("risiko") ? "Warnschild"
@@ -733,9 +494,9 @@ function localIdeas(payload) {
   return {
     ...payload,
     coreMessage: "Eine zentrale Aussage aus dem Sprechertext wird als einfache Metapher verdichtet.",
-    learningGoal: payload.type === "presentation" ? "Der Zuschauer versteht die wichtigste Lernbotschaft auf einen Blick." : "",
-    emotion: payload.type === "presentation" ? "Klarheit" : "",
-    visualMetaphor: payload.type === "presentation" ? `${symbol} als einfache visuelle Metapher.` : "",
+    learningGoal: "Der Zuschauer versteht die wichtigste Lernbotschaft auf einen Blick.",
+    emotion: "Klarheit",
+    visualMetaphor: `${symbol} als einfache visuelle Metapher.`,
     ideas: [
       `${symbol} als klares Hauptsymbol fuer die wichtigste Aussage.`,
       `Leuchtturm mit ruhiger Lichtmarkierung als Zeichen fuer Orientierung.`,
@@ -745,163 +506,10 @@ function localIdeas(payload) {
   };
 }
 
-async function downloadImage(url) {
-  if (!url) return null;
-  const response = await fetch(url);
-  if (!response.ok) return null;
-  return Buffer.from(await response.arrayBuffer());
-}
-
-async function readJson(req) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > maxJsonBytes) {
-      const error = new Error("Anfrage ist zu gross.");
-      error.status = 413;
-      throw error;
-    }
-    chunks.push(chunk);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-  } catch {
-    const error = new Error("Ungueltiges JSON.");
-    error.status = 400;
-    throw error;
-  }
-}
-
 async function readGallery(app = "") {
-  if (!existsSync(galleryPath)) return [];
-  const text = await readFile(galleryPath, "utf8");
-  const entries = text.trim() ? JSON.parse(text) : [];
-  if (!Array.isArray(entries)) return [];
-  return filterGallery(entries, app).map((item) => ({
-    ...item,
-    imageUrl: withBasePath(item.imageUrl),
-    svgUrl: item.svgUrl ? withBasePath(item.svgUrl) : "",
-    promptUrl: withBasePath(item.promptUrl)
-  }));
+  return galleryStore.read(app);
 }
 
 async function writeGallery(entries) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(galleryPath, `${JSON.stringify(entries, null, 2)}\n`);
-}
-
-function filterGallery(entries, app) {
-  if (app === "thumbnails") return entries.filter((item) => item.type === "chapter" || item.type === "lesson");
-  if (app === "presentations") return entries.filter((item) => item.type === "presentation");
-  return entries;
-}
-
-function serveStatic(requestPath, res) {
-  const cleanPath = decodeURIComponent(requestPath === "/" ? "/index.html" : requestPath);
-  if (cleanPath === "/shared/styles.css") {
-    return serveFile(path.join(__dirname, "..", "skillmasters-grafikstil", "styles.css"), res);
-  }
-  const isOutput = cleanPath.startsWith("/outputs/");
-  const root = path.resolve(isOutput ? path.join(__dirname, "outputs") : publicDir);
-  const relativePath = isOutput ? cleanPath.slice("/outputs/".length) : cleanPath.replace(/^\/+/, "");
-  const filePath = path.resolve(root, relativePath);
-  if (!isInsidePath(root, filePath)) return json(res, { error: "Nicht erlaubt" }, 403);
-
-  serveFile(filePath, res);
-}
-
-function isInsidePath(root, filePath) {
-  return filePath === root || filePath.startsWith(`${root}${path.sep}`);
-}
-
-function serveFile(filePath, res) {
-  readFile(filePath)
-    .then((content) => {
-      res.writeHead(200, { "Content-Type": mime(filePath) });
-      res.end(content);
-    })
-    .catch(() => notFound(res));
-}
-
-function notFound(res) {
-  res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-  res.end("Nicht gefunden");
-}
-
-function withBasePath(urlPath) {
-  const cleanPath = `/${String(urlPath || "").replace(/^\/+/, "")}`;
-  if (PUBLIC_BASE_PATH === "/") return cleanPath;
-  if (cleanPath === PUBLIC_BASE_PATH || cleanPath.startsWith(`${PUBLIC_BASE_PATH}/`)) return cleanPath;
-  return `${PUBLIC_BASE_PATH}${cleanPath}`;
-}
-
-function normalizeRoutePath(value) {
-  const trimmed = String(value || "").trim();
-  if (!trimmed || trimmed === "/") return "/";
-  return `/${trimmed.replace(/^\/+|\/+$/g, "")}`;
-}
-
-function normalizeRequestPath(value) {
-  const pathname = decodeURIComponent(value || "/");
-  if (pathname !== "/" && pathname.endsWith("/")) return pathname.slice(0, -1);
-  return pathname || "/";
-}
-
-function matchesRoute(requestPath, routePath) {
-  return requestPath === routePath;
-}
-
-function isRemovedGrafikenPath(requestPath) {
-  return requestPath === "/grafiken" || requestPath.startsWith("/grafiken/");
-}
-
-function publicAppPaths() {
-  return {
-    portal: displayRoutePath(APP_PATHS.portal),
-    thumbnails: displayRoutePath(APP_PATHS.thumbnails),
-    presentations: displayRoutePath(APP_PATHS.presentations)
-  };
-}
-
-function displayRoutePath(routePath) {
-  return routePath === "/" ? "/" : `${routePath}/`;
-}
-
-function json(res, data, status = 200) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(data));
-}
-
-function mime(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  return {
-    ".html": "text/html; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".svg": "image/svg+xml; charset=utf-8",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp"
-  }[ext] || "application/octet-stream";
-}
-
-function safeStamp() {
-  return new Date().toISOString().replace(/[:.]/g, "-");
-}
-
-function loadEnv(envPath) {
-  if (!existsSync(envPath)) return;
-  const text = readFileSync(envPath, "utf8");
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
-    if (!process.env[key]) process.env[key] = value;
-  }
+  await galleryStore.write(entries);
 }

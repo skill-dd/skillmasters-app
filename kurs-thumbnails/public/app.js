@@ -1,14 +1,10 @@
 const state = {
   config: null,
-  app: "thumbnails",
-  allowedTypes: ["course", "chapter", "lesson"],
   type: "course",
   lessonIcon: "video",
   ideasPayload: null,
   selectedIdea: "",
-  selectedIndex: -1,
-  componentCount: 1,
-  componentCountRecommendation: 1
+  selectedIndex: -1
 };
 
 const el = {
@@ -35,9 +31,6 @@ const el = {
   analysisCore: document.querySelector("#analysisCore"),
   analysisEmotion: document.querySelector("#analysisEmotion"),
   analysisMetaphor: document.querySelector("#analysisMetaphor"),
-  componentPicker: document.querySelector("#componentPicker"),
-  componentRecommendation: document.querySelector("#componentRecommendation"),
-  componentOptions: [...document.querySelectorAll(".component-options button")],
   gallery: document.querySelector("#gallery"),
   refreshGallery: document.querySelector("#refreshGallery"),
   latestPreview: document.querySelector("#latestPreview"),
@@ -60,20 +53,10 @@ async function init() {
 }
 
 function configureAppContext() {
-  const path = normalizePath(window.location.pathname);
   const paths = state.config.paths || {};
-  state.app = state.config.app || (path === normalizePath(paths.presentations || "/praesentationsfolien/")
-    ? "presentations"
-    : "thumbnails");
-  state.allowedTypes = state.app === "presentations" ? ["presentation"] : ["course", "chapter", "lesson"];
-  state.type = state.allowedTypes[0];
-  document.body.dataset.app = state.app;
-  document.querySelector("#appTitle").textContent = state.app === "presentations"
-    ? "Präsentationsfolien"
-    : "Kurs-Thumbnails";
-  document.querySelector("#appKicker").textContent = state.app === "presentations"
-    ? "Skillmasters Foliengrafiken"
-    : "Skillmasters Kursgrafiken";
+  document.body.dataset.app = "thumbnails";
+  document.querySelector("#appTitle").textContent = "Kurs-Thumbnails";
+  document.querySelector("#appKicker").textContent = "Skillmasters Kursgrafiken";
   const portalLink = document.querySelector("#portalLink");
   portalLink.href = String(paths.portal || "").startsWith("/__") ? "/" : paths.portal || "/";
   portalLink.hidden = false;
@@ -94,26 +77,15 @@ function bindEvents() {
   el.newIdeasBtn.addEventListener("click", createIdeas);
   el.generateBtn.addEventListener("click", generateImage);
   el.refreshGallery.addEventListener("click", loadGallery);
-  el.componentOptions.forEach((button) => {
-    button.addEventListener("click", () => {
-      state.componentCount = Number(button.dataset.count);
-      renderComponentPicker();
-    });
-  });
 }
 
 function updateModeUi() {
   const type = currentType();
-  const thumbnailMode = isThumbnailMode();
   el.modeButtons.forEach((button) => {
-    const visible = state.allowedTypes.includes(button.dataset.type);
-    button.hidden = !visible;
     button.classList.toggle("selected", button.dataset.type === state.type);
   });
-  document.querySelector(".mode-group").hidden = state.allowedTypes.length < 2;
-  el.formPanel.classList.toggle("presentation-mode", state.type === "presentation");
   el.formPanel.classList.toggle("lesson-mode", state.type === "lesson");
-  el.formPanel.classList.toggle("thumbnail-mode", thumbnailMode);
+  el.formPanel.classList.add("thumbnail-mode");
   el.numberSection.hidden = !type.needsNumber;
   el.numberWrap.hidden = !type.needsNumber;
   el.contextWrap.hidden = !thumbnailMode;
@@ -123,21 +95,15 @@ function updateModeUi() {
   el.previewDivider.hidden = !(type.needsNumber || type.needsLessonIcon);
   el.previewNumber.textContent = normalizedNumber();
   el.previewLessonIcon.innerHTML = type.needsLessonIcon ? lessonIconSvg(state.lessonIcon) : "";
-  el.mainInputLabel.textContent = thumbnailMode ? "Titel" : "Sprechertext";
-  el.scriptText.rows = thumbnailMode ? 2 : 9;
-  el.scriptText.placeholder = thumbnailMode
-    ? "z. B. Was ist INQA-Coaching?"
-    : "Sprechertext hier einfuegen...";
-  el.ideasBtn.textContent = thumbnailMode
-    ? "Inhalt & 3 Bildideen erstellen"
-    : "Analyse & 3 Bildideen erstellen";
+  el.mainInputLabel.textContent = "Titel";
+  el.scriptText.rows = 2;
+  el.scriptText.placeholder = "z. B. Was ist INQA-Coaching?";
+  el.ideasBtn.textContent = "Inhalt & 3 Bildideen erstellen";
   resetIdeas();
 }
 
 async function createIdeas() {
-  setStatus(isThumbnailMode()
-    ? "Titel wird in Inhalt, Lernziel und Bildideen uebersetzt..."
-    : "Kernaussage, Emotion und Metapher werden verdichtet...");
+  setStatus("Titel wird in Inhalt, Lernziel und Bildideen uebersetzt...");
   try {
     const payload = formPayload();
     resetIdeas({ keepAnalysis: true });
@@ -156,32 +122,10 @@ async function createIdeas() {
 }
 
 function renderAnalysis(data) {
-  const thumbnailMode = isThumbnailMode();
-  el.coreMessage.textContent = thumbnailMode ? data.coreMessage || "" : "";
-  if (thumbnailMode) {
-    el.analysis.hidden = true;
-    el.analysisCore.value = data.contentSummary || data.coreMessage || "";
-    el.analysisEmotion.value = data.learningGoal || "";
-    el.analysisMetaphor.value = data.visualMetaphor || "";
-    return;
-  }
-  if (!thumbnailMode && state.type !== "presentation") {
-    el.analysis.hidden = true;
-    return;
-  }
-
-  el.analysis.hidden = false;
-  el.analysisCoreLabel.textContent = thumbnailMode ? "Angenommener Inhalt" : "Kernaussage";
-  el.analysisEmotionLabel.textContent = thumbnailMode ? "Lernziel" : "Emotion";
-  el.analysisCore.readOnly = !thumbnailMode;
-  el.analysisEmotion.readOnly = !thumbnailMode;
-  el.analysisMetaphor.readOnly = !thumbnailMode;
-  el.analysisCore.value = thumbnailMode
-    ? data.contentSummary || data.coreMessage || "Keine Inhaltsannahme erhalten."
-    : data.coreMessage || "Keine Kernaussage erhalten.";
-  el.analysisEmotion.value = thumbnailMode
-    ? data.learningGoal || "Kein Lernziel erhalten."
-    : data.emotion || "Keine Emotion erhalten.";
+  el.coreMessage.textContent = data.coreMessage || "";
+  el.analysis.hidden = true;
+  el.analysisCore.value = data.contentSummary || data.coreMessage || "";
+  el.analysisEmotion.value = data.learningGoal || "";
   el.analysisMetaphor.value = data.visualMetaphor || "Keine visuelle Metapher erhalten.";
 }
 
@@ -199,52 +143,8 @@ function renderIdeas(ideas) {
       state.selectedIdea = ideas[state.selectedIndex];
       el.ideas.querySelectorAll(".idea").forEach((item) => item.classList.remove("selected"));
       button.classList.add("selected");
-      updateComponentRecommendation();
       el.generateBtn.disabled = false;
     });
-  });
-}
-
-function updateComponentRecommendation() {
-  if (state.type !== "presentation") {
-    el.componentPicker.hidden = true;
-    state.componentCount = 1;
-    state.componentCountRecommendation = 1;
-    return;
-  }
-
-  const source = [
-    state.selectedIdea,
-    state.ideasPayload?.coreMessage,
-    state.ideasPayload?.contentSummary,
-    state.ideasPayload?.learningGoal,
-    state.ideasPayload?.visualMetaphor,
-    el.scriptText.value
-  ].join(" ").toLowerCase();
-
-  const processTerms = ["prozess", "schritt", "ablauf", "phase", "stufe", "roadmap", "weg", "reise", "erst", "dann", "danach", "drei", "3 "];
-  const comparisonTerms = ["vergleich", "gegen", "vs", "unterschied", "zwischen", "ursache", "wirkung", "vorher", "nachher", "problem", "lösung", "zwei", "2 ", "beide", "grobkonzept", "feinkonzept", "unterlagen"];
-  const recommended = processTerms.some((term) => source.includes(term))
-    ? 3
-    : comparisonTerms.some((term) => source.includes(term))
-      ? 2
-      : 1;
-
-  state.componentCountRecommendation = recommended;
-  state.componentCount = recommended;
-  renderComponentPicker();
-}
-
-function renderComponentPicker() {
-  if (state.type !== "presentation" || !state.selectedIdea) {
-    el.componentPicker.hidden = true;
-    return;
-  }
-
-  el.componentPicker.hidden = false;
-  el.componentRecommendation.textContent = `${state.componentCountRecommendation} ${state.componentCountRecommendation === 1 ? "Grafik" : "Grafiken"}`;
-  el.componentOptions.forEach((button) => {
-    button.classList.toggle("selected", Number(button.dataset.count) === state.componentCount);
   });
 }
 
@@ -255,8 +155,8 @@ async function generateImage() {
     const payload = {
       ...formPayload(),
       ...analysisPayload(),
-      componentCount: state.type === "presentation" ? state.componentCount : 1,
-      componentCountRecommendation: state.type === "presentation" ? state.componentCountRecommendation : 1,
+      componentCount: 1,
+      componentCountRecommendation: 1,
       selectedIdea: state.selectedIdea,
       count: 1
     };
@@ -274,7 +174,7 @@ async function generateImage() {
 }
 
 async function loadGallery() {
-  const items = await api(`api/gallery?app=${encodeURIComponent(state.app)}`);
+  const items = await api("api/gallery?app=thumbnails");
   renderLatestPreview(items[0]);
   if (!items.length) {
     el.gallery.className = "gallery empty";
@@ -312,47 +212,24 @@ function renderLatestPreview(item) {
 }
 
 function formPayload() {
-  if (isThumbnailMode()) {
-    return {
-      type: state.type,
-      number: normalizedNumber(),
-      lessonIcon: state.lessonIcon,
-      title: el.scriptText.value.trim(),
-      context: el.contextInput.value.trim(),
-      ...analysisPayload()
-    };
-  }
-
   return {
     type: state.type,
     number: normalizedNumber(),
     lessonIcon: state.lessonIcon,
-    text: el.scriptText.value.trim()
+    title: el.scriptText.value.trim(),
+    context: el.contextInput.value.trim(),
+    ...analysisPayload()
   };
 }
 
 function analysisPayload() {
-  if (isThumbnailMode()) {
-    return {
-      contentSummary: state.ideasPayload?.contentSummary || el.analysisCore.value.trim(),
-      coreMessage: state.ideasPayload?.coreMessage || state.ideasPayload?.contentSummary || el.analysisCore.value.trim(),
-      learningGoal: state.ideasPayload?.learningGoal || el.analysisEmotion.value.trim(),
-      emotion: state.ideasPayload?.emotion || "",
-      visualMetaphor: state.ideasPayload?.visualMetaphor || el.analysisMetaphor.value.trim()
-    };
-  }
-
   return {
-    contentSummary: state.ideasPayload?.contentSummary || "",
-    coreMessage: el.analysisCore.value.trim() || state.ideasPayload?.coreMessage || "",
-    learningGoal: state.ideasPayload?.learningGoal || "",
-    emotion: el.analysisEmotion.value.trim() || state.ideasPayload?.emotion || "",
-    visualMetaphor: el.analysisMetaphor.value.trim() || state.ideasPayload?.visualMetaphor || ""
+    contentSummary: state.ideasPayload?.contentSummary || el.analysisCore.value.trim(),
+    coreMessage: state.ideasPayload?.coreMessage || state.ideasPayload?.contentSummary || el.analysisCore.value.trim(),
+    learningGoal: state.ideasPayload?.learningGoal || el.analysisEmotion.value.trim(),
+    emotion: state.ideasPayload?.emotion || "",
+    visualMetaphor: state.ideasPayload?.visualMetaphor || el.analysisMetaphor.value.trim()
   };
-}
-
-function isThumbnailMode() {
-  return state.type === "course" || state.type === "chapter" || state.type === "lesson";
 }
 
 function currentType() {
@@ -367,8 +244,6 @@ function resetIdeas(options = {}) {
   state.ideasPayload = null;
   state.selectedIdea = "";
   state.selectedIndex = -1;
-  state.componentCount = 1;
-  state.componentCountRecommendation = 1;
   el.generateBtn.disabled = true;
   el.newIdeasBtn.disabled = true;
   el.coreMessage.textContent = "";
@@ -378,13 +253,8 @@ function resetIdeas(options = {}) {
     el.analysisEmotion.value = "";
     el.analysisMetaphor.value = "";
   }
-  el.componentPicker.hidden = true;
-  el.componentRecommendation.textContent = "1 Grafik";
-  el.componentOptions.forEach((button) => button.classList.remove("selected"));
   el.ideas.className = "ideas empty";
-  el.ideas.innerHTML = isThumbnailMode()
-    ? "<p>Titel eingeben; die App leitet Inhalt und Bildideen daraus ab.</p>"
-    : "<p>Nach dem Sprechertext erscheinen hier genau drei reduzierte Ideen.</p>";
+  el.ideas.innerHTML = "<p>Titel eingeben; die App leitet Inhalt und Bildideen daraus ab.</p>";
 }
 
 function renderLessonIcons() {
@@ -442,12 +312,6 @@ async function api(url, options = {}) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Fehler beim Laden.");
   return data;
-}
-
-function normalizePath(value) {
-  const path = String(value || "/");
-  if (path !== "/" && path.endsWith("/")) return path.slice(0, -1);
-  return path || "/";
 }
 
 function escapeHtml(value) {
