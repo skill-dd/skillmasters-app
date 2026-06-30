@@ -170,6 +170,10 @@ body[data-app="thumbnails"] .mode-group {
   text-align: left;
 }
 
+.mode-button[hidden] {
+  display: none;
+}
+
 .mode-button strong {
   font-size: 16px;
 }
