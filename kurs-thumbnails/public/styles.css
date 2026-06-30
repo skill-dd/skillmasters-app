@@ -230,7 +230,8 @@ textarea {
 }
 
 .thumbnail-mode #scriptText {
-  min-height: 64px;
+  min-height: 54px;
+  height: 54px;
 }
 
 input:focus,

@@ -88,18 +88,34 @@ function updateModeUi() {
   el.formPanel.classList.add("thumbnail-mode");
   el.numberSection.hidden = !type.needsNumber;
   el.numberWrap.hidden = !type.needsNumber;
-  el.contextWrap.hidden = !thumbnailMode;
+  el.contextWrap.hidden = false;
   el.lessonIconSection.hidden = !type.needsLessonIcon;
   el.previewNumber.hidden = !type.needsNumber;
   el.previewLessonIcon.hidden = !type.needsLessonIcon;
   el.previewDivider.hidden = !(type.needsNumber || type.needsLessonIcon);
   el.previewNumber.textContent = normalizedNumber();
   el.previewLessonIcon.innerHTML = type.needsLessonIcon ? lessonIconSvg(state.lessonIcon) : "";
-  el.mainInputLabel.textContent = "Titel";
-  el.scriptText.rows = 2;
-  el.scriptText.placeholder = "z. B. Was ist INQA-Coaching?";
+  el.mainInputLabel.textContent = titleFieldLabel();
+  el.scriptText.rows = 1;
+  el.scriptText.placeholder = titleFieldPlaceholder();
   el.ideasBtn.textContent = "Inhalt & 3 Bildideen erstellen";
   resetIdeas();
+}
+
+function titleFieldLabel() {
+  return {
+    course: "Name des Kurses",
+    chapter: "Name des Kapitels",
+    lesson: "Name der Lektion"
+  }[state.type];
+}
+
+function titleFieldPlaceholder() {
+  return {
+    course: "z. B. Grundlagen der Arbeitssicherheit",
+    chapter: "z. B. Abrechnung & Kostenerstattung",
+    lesson: "z. B. Von der Erstberatung zum Projektstart"
+  }[state.type];
 }
 
 async function createIdeas() {
