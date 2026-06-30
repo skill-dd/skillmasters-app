@@ -15,8 +15,17 @@ npm run dev
 Danach im Browser oeffnen:
 
 ```text
-http://localhost:5177
+http://localhost:5177/
 ```
+
+## Lokale Pfade
+
+- Portal: `http://localhost:5177/`
+- Kurs-Thumbnails: `http://localhost:5177/kurs-thumbnails/`
+- Praesentationsfolien: `http://localhost:5177/praesentationsfolien/`
+- Der alte Pfad `/grafiken/` wird nicht mehr bedient.
+
+Die Pfade koennen ueber `PORTAL_PATH`, `THUMBNAILS_PATH` und `PRESENTATIONS_PATH` konfiguriert werden.
 
 ## Feste Regeln
 

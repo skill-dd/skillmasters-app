@@ -17,7 +17,11 @@ loadEnv(path.join(__dirname, ".env"));
 
 const PORT = Number(process.env.PORT || 5177);
 const HOST = process.env.HOST || "127.0.0.1";
-const BASE_PATH = normalizeBasePath(process.env.BASE_PATH || "");
+const APP_PATHS = {
+  portal: normalizeRoutePath(process.env.PORTAL_PATH || "/"),
+  thumbnails: normalizeRoutePath(process.env.THUMBNAILS_PATH || "/kurs-thumbnails"),
+  presentations: normalizeRoutePath(process.env.PRESENTATIONS_PATH || "/praesentationsfolien")
+};
 const CI = {
   navy: "#0F0F3C",
   red: "#F44336",
@@ -84,8 +88,7 @@ Hard rules:
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    const requestPath = stripBasePath(url.pathname, res);
-    if (!requestPath) return;
+    const requestPath = normalizeRequestPath(url.pathname);
 
     if (req.method === "GET" && requestPath === "/api/config") {
       return json(res, {
@@ -94,17 +97,32 @@ const server = http.createServer(async (req, res) => {
         symbolSystem,
         ci: CI,
         imageSize: process.env.OPENAI_IMAGE_SIZE || "1536x864",
-        basePath: BASE_PATH
+        paths: publicAppPaths()
       });
     }
     if (req.method === "GET" && requestPath === "/api/gallery") {
-      return json(res, await readGallery());
+      return json(res, await readGallery(url.searchParams.get("app") || ""));
     }
     if (req.method === "POST" && requestPath === "/api/ideas") {
       return json(res, await createIdeas(await readJson(req)));
     }
     if (req.method === "POST" && requestPath === "/api/generate") {
       return json(res, await generateImages(await readJson(req)));
+    }
+    if (req.method === "GET" && isRemovedGrafikenPath(requestPath)) {
+      return notFound(res);
+    }
+    if (req.method === "GET" && matchesRoute(requestPath, APP_PATHS.portal)) {
+      return serveFile(path.join(publicDir, "portal.html"), res);
+    }
+    if (req.method === "GET" && matchesRoute(requestPath, APP_PATHS.thumbnails)) {
+      return serveFile(path.join(publicDir, "index.html"), res);
+    }
+    if (req.method === "GET" && matchesRoute(requestPath, APP_PATHS.presentations)) {
+      return serveFile(path.join(publicDir, "index.html"), res);
+    }
+    if (requestPath === "/") {
+      return notFound(res);
     }
     return serveStatic(requestPath, res);
   } catch (error) {
@@ -114,7 +132,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`skillmasters-Grafiken laeuft auf http://${HOST}:${PORT}${BASE_PATH || ""}`);
+  console.log(`skillmasters-Grafiken laeuft auf http://${HOST}:${PORT}`);
 });
 
 async function createIdeas(payload) {
@@ -824,12 +842,12 @@ async function readJson(req) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
-async function readGallery() {
+async function readGallery(app = "") {
   if (!existsSync(galleryPath)) return [];
   const text = await readFile(galleryPath, "utf8");
   const entries = text.trim() ? JSON.parse(text) : [];
   if (!Array.isArray(entries)) return [];
-  return entries.map((item) => ({
+  return filterGallery(entries, app).map((item) => ({
     ...item,
     imageUrl: withBasePath(item.imageUrl),
     svgUrl: item.svgUrl ? withBasePath(item.svgUrl) : "",
@@ -842,46 +860,69 @@ async function writeGallery(entries) {
   await writeFile(galleryPath, `${JSON.stringify(entries, null, 2)}\n`);
 }
 
+function filterGallery(entries, app) {
+  if (app === "thumbnails") return entries.filter((item) => item.type === "chapter" || item.type === "lesson");
+  if (app === "presentations") return entries.filter((item) => item.type === "presentation");
+  return entries;
+}
+
 function serveStatic(requestPath, res) {
   const cleanPath = decodeURIComponent(requestPath === "/" ? "/index.html" : requestPath);
   const root = cleanPath.startsWith("/outputs/") ? __dirname : publicDir;
   const filePath = path.normalize(path.join(root, cleanPath));
   if (!filePath.startsWith(root)) return json(res, { error: "Nicht erlaubt" }, 403);
 
+  serveFile(filePath, res);
+}
+
+function serveFile(filePath, res) {
   readFile(filePath)
     .then((content) => {
       res.writeHead(200, { "Content-Type": mime(filePath) });
       res.end(content);
     })
-    .catch(() => {
-      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("Nicht gefunden");
-    });
+    .catch(() => notFound(res));
 }
 
-function stripBasePath(pathname, res) {
-  if (!BASE_PATH) return pathname;
-  if (pathname === BASE_PATH) {
-    res.writeHead(308, { Location: `${BASE_PATH}/` });
-    res.end();
-    return "";
-  }
-  if (!pathname.startsWith(`${BASE_PATH}/`)) {
-    return pathname;
-  }
-  const stripped = pathname.slice(BASE_PATH.length);
-  return stripped || "/";
+function notFound(res) {
+  res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end("Nicht gefunden");
 }
 
 function withBasePath(urlPath) {
-  if (!urlPath || !urlPath.startsWith("/") || urlPath.startsWith(`${BASE_PATH}/`)) return urlPath;
-  return `${BASE_PATH}${urlPath}`;
+  return urlPath;
 }
 
-function normalizeBasePath(value) {
+function normalizeRoutePath(value) {
   const trimmed = String(value || "").trim();
-  if (!trimmed || trimmed === "/") return "";
+  if (!trimmed || trimmed === "/") return "/";
   return `/${trimmed.replace(/^\/+|\/+$/g, "")}`;
+}
+
+function normalizeRequestPath(value) {
+  const pathname = decodeURIComponent(value || "/");
+  if (pathname !== "/" && pathname.endsWith("/")) return pathname.slice(0, -1);
+  return pathname || "/";
+}
+
+function matchesRoute(requestPath, routePath) {
+  return requestPath === routePath;
+}
+
+function isRemovedGrafikenPath(requestPath) {
+  return requestPath === "/grafiken" || requestPath.startsWith("/grafiken/");
+}
+
+function publicAppPaths() {
+  return {
+    portal: displayRoutePath(APP_PATHS.portal),
+    thumbnails: displayRoutePath(APP_PATHS.thumbnails),
+    presentations: displayRoutePath(APP_PATHS.presentations)
+  };
+}
+
+function displayRoutePath(routePath) {
+  return routePath === "/" ? "/" : `${routePath}/`;
 }
 
 function json(res, data, status = 200) {

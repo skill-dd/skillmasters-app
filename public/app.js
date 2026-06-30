@@ -1,5 +1,7 @@
 const state = {
   config: null,
+  app: "thumbnails",
+  allowedTypes: ["chapter", "lesson"],
   type: "chapter",
   lessonIcon: "video",
   ideasPayload: null,
@@ -49,11 +51,30 @@ const el = {
 init();
 
 async function init() {
-  state.config = await api("api/config");
+  state.config = await api("/api/config");
+  configureAppContext();
   renderLessonIcons();
   bindEvents();
   updateModeUi();
   await loadGallery();
+}
+
+function configureAppContext() {
+  const path = normalizePath(window.location.pathname);
+  const paths = state.config.paths || {};
+  state.app = path === normalizePath(paths.presentations || "/praesentationsfolien/")
+    ? "presentations"
+    : "thumbnails";
+  state.allowedTypes = state.app === "presentations" ? ["presentation"] : ["chapter", "lesson"];
+  state.type = state.allowedTypes[0];
+  document.body.dataset.app = state.app;
+  document.querySelector("#appTitle").textContent = state.app === "presentations"
+    ? "Präsentationsfolien"
+    : "Kurs-Thumbnails";
+  document.querySelector("#appKicker").textContent = state.app === "presentations"
+    ? "Skillmasters Foliengrafiken"
+    : "Skillmasters Kursgrafiken";
+  document.querySelector("#portalLink").href = paths.portal || "/";
 }
 
 function bindEvents() {
@@ -83,8 +104,11 @@ function updateModeUi() {
   const type = currentType();
   const thumbnailMode = isThumbnailMode();
   el.modeButtons.forEach((button) => {
+    const visible = state.allowedTypes.includes(button.dataset.type);
+    button.hidden = !visible;
     button.classList.toggle("selected", button.dataset.type === state.type);
   });
+  document.querySelector(".mode-group").hidden = state.allowedTypes.length < 2;
   el.formPanel.classList.toggle("presentation-mode", state.type === "presentation");
   el.formPanel.classList.toggle("lesson-mode", state.type === "lesson");
   el.formPanel.classList.toggle("thumbnail-mode", thumbnailMode);
@@ -241,7 +265,7 @@ async function generateImage() {
 }
 
 async function loadGallery() {
-  const items = await api("api/gallery");
+  const items = await api(`/api/gallery?app=${encodeURIComponent(state.app)}`);
   renderLatestPreview(items[0]);
   if (!items.length) {
     el.gallery.className = "gallery empty";
@@ -401,13 +425,20 @@ function setStatus(message) {
 }
 
 async function api(url, options = {}) {
-  const response = await fetch(url, {
+  const apiUrl = url.startsWith("/") ? url : `/${url}`;
+  const response = await fetch(apiUrl, {
     headers: { "Content-Type": "application/json" },
     ...options
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Fehler beim Laden.");
   return data;
+}
+
+function normalizePath(value) {
+  const path = String(value || "/");
+  if (path !== "/" && path.endsWith("/")) return path.slice(0, -1);
+  return path || "/";
 }
 
 function escapeHtml(value) {
