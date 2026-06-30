@@ -55,3 +55,21 @@ systemctl restart skillmasters-thumbnails skillmasters-praesentationsfolien
 
 API-Keys werden nicht ueber GitHub uebertragen. Die `.env`-Dateien bleiben nur
 lokal auf dem Hetzner-Server.
+
+## Passwortschutz
+
+Der oeffentliche Zugriff kann ueber Caddy Basic Auth geschuetzt werden. Das
+Klartext-Passwort wird nicht im Repository gespeichert; auf dem Server bleibt
+nur der Passwort-Hash in `/etc/skillmasters-basic-auth.env`.
+
+Auf dem Hetzner-Server als `root`:
+
+```bash
+cd /home/app/skillmasters-app
+BASIC_AUTH_USER=skillmasters \
+BASIC_AUTH_PASSWORD='hier-ein-starkes-passwort-eintragen' \
+bash deploy/configure-basic-auth.sh
+```
+
+Wenn der Installer spaeter erneut ausgefuehrt wird, verwendet er diesen
+gespeicherten Passwort-Hash automatisch weiter.

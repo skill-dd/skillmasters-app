@@ -5,6 +5,7 @@ REPO_URL="${REPO_URL:-}"
 APP_DOMAIN="${APP_DOMAIN:-app.skillmasters.de}"
 APP_DIR="${APP_DIR:-/home/app/skillmasters-app}"
 BRANCH="${BRANCH:-main}"
+AUTH_ENV_FILE="${AUTH_ENV_FILE:-/etc/skillmasters-basic-auth.env}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Bitte als root ausfuehren." >&2
@@ -16,8 +17,37 @@ if [ -z "$REPO_URL" ]; then
   exit 1
 fi
 
+if [ -f "$AUTH_ENV_FILE" ]; then
+  # Enthaelt nur Benutzername und gehashtes Passwort, kein Klartext-Passwort.
+  # shellcheck disable=SC1090
+  source "$AUTH_ENV_FILE"
+fi
+
+BASIC_AUTH_USER="${BASIC_AUTH_USER:-}"
+BASIC_AUTH_PASSWORD="${BASIC_AUTH_PASSWORD:-}"
+BASIC_AUTH_HASH="${BASIC_AUTH_HASH:-}"
+
 apt-get update
 apt-get install -y ca-certificates curl git gnupg caddy
+
+AUTH_BLOCK=""
+if [ -n "$BASIC_AUTH_PASSWORD" ] || [ -n "$BASIC_AUTH_HASH" ]; then
+  BASIC_AUTH_USER="${BASIC_AUTH_USER:-skillmasters}"
+  if [[ "$BASIC_AUTH_USER" =~ [[:space:]] ]]; then
+    echo "BASIC_AUTH_USER darf keine Leerzeichen enthalten." >&2
+    exit 1
+  fi
+  if [ -z "$BASIC_AUTH_HASH" ]; then
+    BASIC_AUTH_HASH="$(caddy hash-password --plaintext "$BASIC_AUTH_PASSWORD")"
+  fi
+  AUTH_BLOCK=$(cat <<EOF
+  basic_auth {
+    $BASIC_AUTH_USER $BASIC_AUTH_HASH
+  }
+
+EOF
+)
+fi
 
 if ! command -v node >/dev/null 2>&1 || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)'; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
@@ -139,6 +169,7 @@ EOF
 
 cat >/etc/caddy/Caddyfile <<EOF
 $APP_DOMAIN {
+$AUTH_BLOCK
   handle_path /kurs-thumbnails/* {
     reverse_proxy 127.0.0.1:5177
   }
