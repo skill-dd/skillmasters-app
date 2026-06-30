@@ -21,6 +21,7 @@ const outputImagesDir = path.join(__dirname, "outputs", "images");
 const outputPromptsDir = path.join(__dirname, "outputs", "prompts");
 const dataDir = path.join(__dirname, "data");
 const galleryPath = path.join(__dirname, "data", "gallery.json");
+const maxJsonBytes = Number(process.env.MAX_JSON_BYTES || 1_000_000);
 
 loadEnv(path.join(__dirname, ".env"));
 
@@ -75,7 +76,7 @@ const server = http.createServer(async (req, res) => {
     return serveStatic(requestPath, res);
   } catch (error) {
     console.error(error);
-    json(res, { error: error.message || "Unbekannter Fehler" }, 500);
+    json(res, { error: error.message || "Unbekannter Fehler" }, error.status || 500);
   }
 });
 
@@ -752,8 +753,23 @@ async function downloadImage(url) {
 
 async function readJson(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxJsonBytes) {
+      const error = new Error("Anfrage ist zu gross.");
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+  } catch {
+    const error = new Error("Ungueltiges JSON.");
+    error.status = 400;
+    throw error;
+  }
 }
 
 async function readGallery(app = "") {
@@ -785,11 +801,17 @@ function serveStatic(requestPath, res) {
   if (cleanPath === "/shared/styles.css") {
     return serveFile(path.join(__dirname, "..", "skillmasters-grafikstil", "styles.css"), res);
   }
-  const root = cleanPath.startsWith("/outputs/") ? __dirname : publicDir;
-  const filePath = path.normalize(path.join(root, cleanPath));
-  if (!filePath.startsWith(root)) return json(res, { error: "Nicht erlaubt" }, 403);
+  const isOutput = cleanPath.startsWith("/outputs/");
+  const root = path.resolve(isOutput ? path.join(__dirname, "outputs") : publicDir);
+  const relativePath = isOutput ? cleanPath.slice("/outputs/".length) : cleanPath.replace(/^\/+/, "");
+  const filePath = path.resolve(root, relativePath);
+  if (!isInsidePath(root, filePath)) return json(res, { error: "Nicht erlaubt" }, 403);
 
   serveFile(filePath, res);
+}
+
+function isInsidePath(root, filePath) {
+  return filePath === root || filePath.startsWith(`${root}${path.sep}`);
 }
 
 function serveFile(filePath, res) {

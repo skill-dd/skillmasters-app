@@ -158,6 +158,13 @@ async function createIdeas() {
 function renderAnalysis(data) {
   const thumbnailMode = isThumbnailMode();
   el.coreMessage.textContent = thumbnailMode ? data.coreMessage || "" : "";
+  if (thumbnailMode) {
+    el.analysis.hidden = true;
+    el.analysisCore.value = data.contentSummary || data.coreMessage || "";
+    el.analysisEmotion.value = data.learningGoal || "";
+    el.analysisMetaphor.value = data.visualMetaphor || "";
+    return;
+  }
   if (!thumbnailMode && state.type !== "presentation") {
     el.analysis.hidden = true;
     return;
@@ -327,11 +334,11 @@ function formPayload() {
 function analysisPayload() {
   if (isThumbnailMode()) {
     return {
-      contentSummary: el.analysisCore.value.trim(),
-      coreMessage: state.ideasPayload?.coreMessage || el.analysisCore.value.trim(),
-      learningGoal: el.analysisEmotion.value.trim(),
+      contentSummary: state.ideasPayload?.contentSummary || el.analysisCore.value.trim(),
+      coreMessage: state.ideasPayload?.coreMessage || state.ideasPayload?.contentSummary || el.analysisCore.value.trim(),
+      learningGoal: state.ideasPayload?.learningGoal || el.analysisEmotion.value.trim(),
       emotion: state.ideasPayload?.emotion || "",
-      visualMetaphor: el.analysisMetaphor.value.trim()
+      visualMetaphor: state.ideasPayload?.visualMetaphor || el.analysisMetaphor.value.trim()
     };
   }
 

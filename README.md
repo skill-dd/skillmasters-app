@@ -1,6 +1,6 @@
-# Skillmasters Grafiken
+# Skillmasters App
 
-Monorepo fuer die getrennten Skillmasters-Grafik-Apps.
+Monorepo fuer das Skillmasters-Portal und die getrennten Grafik-Apps.
 
 ## Lokale Apps
 
@@ -24,25 +24,34 @@ skillmasters-grafikstil
 
 `.env`, API-Keys, `outputs/` und `data/gallery.json` werden nicht committed.
 
-## Deployment
+## Deployment auf Hetzner
 
-Pushes auf `main` koennen per GitHub Actions automatisch auf Hetzner deployt werden.
-Dafuer muessen in GitHub unter `Settings -> Secrets and variables -> Actions`
-diese Repository-Secrets gesetzt sein:
+Der Hetzner-Server kann sich per systemd-Timer automatisch die neueste Version
+von GitHub holen. Der Server prueft jede Minute `main`; bei einer neuen Version
+macht er `git reset --hard origin/main`, installiert Abhaengigkeiten, fuehrt
+`npm run check` aus und startet die Dienste neu.
 
-```text
-HETZNER_HOST=88.99.171.64
-HETZNER_USER=root
-HETZNER_SSH_KEY=<privater SSH-Key fuer den Serverzugang>
-HETZNER_KNOWN_HOSTS=<known_hosts-Zeile fuer 88.99.171.64>
-```
-
-Die Action macht auf dem Server:
+Auf einem frischen Hetzner-Server als `root` das Repository einmal nach `/tmp`
+klonen und von dort die Installation starten:
 
 ```bash
-su - app -c 'cd /home/app/skillmasters-grafiken && git pull --ff-only origin main && npm install --omit=dev --no-package-lock && npm run check'
-systemctl restart skillmasters-portal skillmasters-thumbnails skillmasters-praesentationsfolien
+git clone https://github.com/skill-dd/skillmasters-app.git /tmp/skillmasters-app
+cd /tmp/skillmasters-app
+REPO_URL=https://github.com/skill-dd/skillmasters-app.git \
+APP_DOMAIN=app.skillmasters.de \
+bash deploy/install-hetzner.sh
 ```
 
-API-Keys werden nicht ueber GitHub uebertragen. Die `.env`-Dateien bleiben lokal
-auf dem Hetzner-Server.
+Wenn das GitHub-Repository privat ist, braucht der Server vor dem Klonen einen
+lesenden GitHub-Zugang, z. B. einen Deploy-Key oder einen Token.
+
+Danach auf dem Server die API-Keys eintragen:
+
+```bash
+nano /home/app/skillmasters-app/kurs-thumbnails/.env
+nano /home/app/skillmasters-app/praesentationsfolien/.env
+systemctl restart skillmasters-thumbnails skillmasters-praesentationsfolien
+```
+
+API-Keys werden nicht ueber GitHub uebertragen. Die `.env`-Dateien bleiben nur
+lokal auf dem Hetzner-Server.
