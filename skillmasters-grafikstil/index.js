@@ -12,8 +12,9 @@ export const CI = {
 export const referenceImagePath = path.join(__dirname, "assets", "thumbnail-referenzbild.png");
 
 export const assetTypes = {
-  chapter: { label: "Kapitel-Thumbnail", maxImages: 1, needsNumber: true },
-  lesson: { label: "Lektion-Thumbnail", maxImages: 1, needsNumber: false, needsLessonIcon: true },
+  course: { label: "Kurs", maxImages: 1, needsNumber: false },
+  chapter: { label: "Kapitel", maxImages: 1, needsNumber: true },
+  lesson: { label: "Lektion", maxImages: 1, needsNumber: false, needsLessonIcon: true },
   presentation: { label: "Praesentation", maxImages: 3, needsNumber: false }
 };
 

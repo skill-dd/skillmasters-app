@@ -1,8 +1,8 @@
 const state = {
   config: null,
   app: "thumbnails",
-  allowedTypes: ["chapter", "lesson"],
-  type: "chapter",
+  allowedTypes: ["course", "chapter", "lesson"],
+  type: "course",
   lessonIcon: "video",
   ideasPayload: null,
   selectedIdea: "",
@@ -65,7 +65,7 @@ function configureAppContext() {
   state.app = state.config.app || (path === normalizePath(paths.presentations || "/praesentationsfolien/")
     ? "presentations"
     : "thumbnails");
-  state.allowedTypes = state.app === "presentations" ? ["presentation"] : ["chapter", "lesson"];
+  state.allowedTypes = state.app === "presentations" ? ["presentation"] : ["course", "chapter", "lesson"];
   state.type = state.allowedTypes[0];
   document.body.dataset.app = state.app;
   document.querySelector("#appTitle").textContent = state.app === "presentations"
@@ -345,7 +345,7 @@ function analysisPayload() {
 }
 
 function isThumbnailMode() {
-  return state.type === "chapter" || state.type === "lesson";
+  return state.type === "course" || state.type === "chapter" || state.type === "lesson";
 }
 
 function currentType() {

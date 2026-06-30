@@ -129,14 +129,54 @@ async function createIdeas(payload) {
     learningGoal: parsed.learningGoal || "",
     emotion: parsed.emotion || "",
     visualMetaphor: parsed.visualMetaphor || "",
-    ideas: parsed.ideas.slice(0, 3)
+    ideas: parsed.ideas.slice(0, 3).map(cleanIdeaText)
   };
 }
 
 function buildIdeasPrompt(normalized) {
   if (normalized.type === "presentation") return buildPresentationIdeasPrompt(normalized);
+  if (normalized.type === "course") return buildCourseIdeasPrompt(normalized);
   if (normalized.type === "lesson") return buildLessonIdeasPrompt(normalized);
   return buildChapterIdeasPrompt(normalized);
+}
+
+function buildCourseIdeasPrompt(normalized) {
+  return `
+Du entwickelst Inhalt und exakt 3 konkrete Bildideen fuer eine Skillmasters-Kursgrafik.
+
+Einsatzart: ${assetTypes[normalized.type].label}
+Titel:
+${normalized.title}
+Optionaler Kurs-/Fachkontext:
+${normalized.context || "nicht angegeben"}
+Vorhandene Nutzerkorrektur zur Inhaltsannahme:
+${normalized.contentSummary || "keine"}
+Vorhandene Nutzerkorrektur zum Lernziel:
+${normalized.learningGoal || "keine"}
+Vorhandene Nutzerkorrektur zur visuellen Metapher:
+${normalized.visualMetaphor || "keine"}
+
+Aufgabe:
+- Leite aus dem kurzen Titel eine plausible fachliche Inhaltsannahme fuer den gesamten Kurs ab.
+- Denke kursweit, aber verdichte radikal auf ein einziges Titelbild-Motiv.
+- Erfinde keine spezifischen Fakten, Normen, Foerderbedingungen, Paragraphen oder Produktdetails.
+- Wenn der Titel mehrdeutig ist, bleibe allgemein und nutze den optionalen Kontext.
+- Formuliere eine klare Kernaussage und ein konkretes Lernziel fuer den gesamten Kurs.
+- Entwickle eine visuelle Metapher, die aus dem Fachinhalt kommt, nicht aus generischen Standard-Icons.
+- Jede Bildidee muss auf den ersten Blick als Thumbnail funktionieren: ein grosses Hauptobjekt, maximal ein kleiner Nebenakzent.
+- Vermeide Kurslandkarten, Prozessuebersichten, Netzwerke, viele Kacheln, viele Dokumente, mehrere Stationen, Pfeilketten, Dashboards und kleinteilige Icon-Sammlungen.
+- Bevorzuge ein einzelnes konkretes Motiv wie ein stark vereinfachtes Arbeitsmittel, ein einzelnes Kursartefakt, ein Modellbaustein, ein Schutzobjekt, ein Qualitaetszeichen, ein Projektordner oder ein klarer Pruefpunkt.
+- Verwende Kompass, Rakete, Leuchtturm, Wegweiser, Zielscheibe und Lupe nur, wenn sie wirklich aus dem Titel folgen.
+- Keine Menschen, keine Personen.
+- Keine Textelemente im Bild.
+- Jede Idee muss ein anderes konkretes Motiv verwenden.
+- Jede Idee ist nur eine kurze Motivbeschreibung mit maximal 12 Woertern.
+- Keine Erklaersaetze, keine Begruendung, keine Klammern.
+- Schreibe nicht "Hauptmotiv:" und nicht "Satz:".
+
+Antworte ausschliesslich als JSON:
+{"coreMessage":"...","contentSummary":"...","learningGoal":"...","emotion":"","visualMetaphor":"...","ideas":["...","...","..."]}
+`.trim();
 }
 
 function buildChapterIdeasPrompt(normalized) {
@@ -161,13 +201,18 @@ Aufgabe:
 - Erfinde keine spezifischen Fakten, Normen, Foerderbedingungen, Paragraphen oder Produktdetails.
 - Wenn der Titel mehrdeutig ist, bleibe allgemein und nutze den optionalen Kontext.
 - Formuliere eine klare Kernaussage und ein konkretes Lernziel.
-- Entwickle eine visuelle Metapher, die aus dem Fachinhalt kommt, nicht aus generischen Standard-Icons.
-- Bevorzuge konkrete Motive wie Unterlagen, Checklisten, Ablaufstationen, Rollenmarkierungen, Modellbausteine, Sicherheitszeichen, Qualitaetspruefung, Projektartefakte, Entscheidungsunterlagen, Prozessuebergaben oder Arbeitsmittel.
+- Entwickle eine stark vereinfachte visuelle Metapher, die aus dem Fachinhalt kommt.
+- Jede Bildidee muss auf den ersten Blick als Thumbnail funktionieren: ein grosses Hauptobjekt, maximal ein kleiner Nebenakzent.
+- Wenn der Titel einen Prozess beschreibt, verdichte ihn auf ein einziges Uebergangs- oder Ergebnisobjekt, keine Ablaufkette.
+- Vermeide Ablaufstationen, Prozessstrassen, Pfeilketten, mehrere Tische, viele Dokumente, mehrere Marker, Dashboards und kleinteilige Icon-Sammlungen.
+- Bevorzuge ein einzelnes konkretes Motiv wie eine Mappe, ein Baustein, ein Arbeitsmittel, ein Pruefpunkt, ein Schutzobjekt, ein Projektordner oder ein Qualitaetszeichen.
 - Verwende Kompass, Rakete, Leuchtturm, Wegweiser, Zielscheibe und Lupe nur, wenn sie wirklich aus dem Titel folgen.
 - Keine Menschen, keine Personen.
 - Keine Textelemente im Bild.
 - Jede Idee muss ein anderes konkretes Motiv verwenden.
-- Jede Idee erklaert in einem kurzen deutschen Satz sichtbar, welchen Inhalt sie visualisiert.
+- Jede Idee ist nur eine kurze Motivbeschreibung mit maximal 12 Woertern.
+- Keine Erklaersaetze, keine Begruendung, keine Klammern.
+- Schreibe nicht "Thumbnail-Idee", nicht "Hauptmotiv:" und nicht "Satz:".
 
 Antworte ausschliesslich als JSON:
 {"coreMessage":"...","contentSummary":"...","learningGoal":"...","emotion":"","visualMetaphor":"...","ideas":["...","...","..."]}
@@ -196,14 +241,19 @@ Aufgabe:
 - Erfinde keine spezifischen Fakten, Normen, Foerderbedingungen, Paragraphen oder Produktdetails.
 - Wenn der Titel mehrdeutig ist, bleibe allgemein und nutze den optionalen Kontext.
 - Formuliere eine klare Kernaussage und ein konkretes Lernziel.
-- Entwickle eine visuelle Metapher fuer die rechte Bildseite, die aus dem Fachinhalt kommt.
+- Entwickle eine stark vereinfachte visuelle Metapher fuer die rechte Bildseite.
 - Das feste Lektionssymbol links ist nur die Typ-Markierung und darf nicht Teil der Bildidee sein.
-- Bevorzuge konkrete Motive wie Unterlagen, Checklisten, Ablaufstationen, Rollenmarkierungen, Modellbausteine, Sicherheitszeichen, Qualitaetspruefung, Projektartefakte, Entscheidungsunterlagen, Prozessuebergaben oder Arbeitsmittel.
+- Jede Bildidee muss auf den ersten Blick als Thumbnail funktionieren: ein grosses Hauptobjekt rechts, maximal ein kleiner Nebenakzent.
+- Wenn der Titel einen Prozess beschreibt, verdichte ihn auf ein einziges Uebergangs- oder Ergebnisobjekt, keine Ablaufkette.
+- Vermeide Ablaufstationen, Pruefstationen, Prozessachsen, Pfeile, mehrere Ordner, viele Unterlagen, Bewertungsboegen, Rollenplaettchen, Netzwerke und kleinteilige Icon-Sammlungen.
+- Bevorzuge ein einzelnes konkretes Motiv wie ein Modellbaustein, ein Arbeitsmittel, ein Pruefpunkt, eine Mappe, ein Schutzobjekt, ein Projektordner oder ein Qualitaetszeichen.
 - Verwende Kompass, Rakete, Leuchtturm, Wegweiser, Zielscheibe und Lupe nur, wenn sie wirklich aus dem Titel folgen.
 - Keine Menschen, keine Personen.
 - Keine Textelemente im Bild.
 - Jede Idee muss ein anderes konkretes Motiv verwenden.
-- Jede Idee erklaert in einem kurzen deutschen Satz sichtbar, welchen Inhalt sie visualisiert.
+- Jede Idee ist nur eine kurze Motivbeschreibung mit maximal 12 Woertern.
+- Keine Erklaersaetze, keine Begruendung, keine Klammern.
+- Schreibe nicht "Thumbnail-Idee", nicht "Hauptmotiv:" und nicht "Satz:".
 
 Antworte ausschliesslich als JSON:
 {"coreMessage":"...","contentSummary":"...","learningGoal":"...","emotion":"","visualMetaphor":"...","ideas":["...","...","..."]}
@@ -368,8 +418,48 @@ async function generateImages(payload) {
 
 function buildImagePrompt(payload, selectedIdea) {
   if (payload.type === "presentation") return buildPresentationImagePrompt(payload, selectedIdea);
+  if (payload.type === "course") return buildCourseImagePrompt(payload, selectedIdea);
   if (payload.type === "lesson") return buildLessonImagePrompt(payload, selectedIdea);
   return buildChapterImagePrompt(payload, selectedIdea);
+}
+
+function buildCourseImagePrompt(payload, selectedIdea) {
+  return `
+Create one final 16:9 Skillmasters course overview graphic.
+
+Selected metaphor idea:
+${selectedIdea}
+
+Thumbnail input:
+- Title: ${payload.title || ""}
+- Context: ${payload.context || ""}
+- Assumed content: ${payload.contentSummary || payload.coreMessage || ""}
+- Learning goal: ${payload.learningGoal || ""}
+- Visual metaphor: ${payload.visualMetaphor || ""}
+
+Composition:
+- No number.
+- No red divider line.
+- No fixed lesson icon.
+- No left-side marker area.
+- Place one very large central symbol in the middle of the canvas.
+- The main symbol should fill roughly 45-58% of the canvas width, centered around x=50%, y=43%, with generous white space and a subtle pale support circle if useful.
+- Use one immediately understandable course-level metaphor only.
+- Allow at most one tiny supporting accent. If the idea mentions several objects, choose the strongest single object and ignore the rest.
+- Make the visual feel like a course cover or course overview, not a chapter or lesson tile.
+- Include the fixed navy wave in the lower-right corner, similar to the reference thumbnail style.
+- Keep the icon large and clear, but not crowded: no oversized floor object, no complex base, no full scene.
+- Make the core course message instantly visible.
+
+${lockedStyle}
+
+Additional hard rules for course graphics:
+- Absolutely no text, labels, letters, or numbers.
+- Do not draw any red vertical divider.
+- Do not reserve or decorate a left marker area.
+- Do not draw a course map, process map, network, dashboard, multi-card board, connected platforms, arrows between stations, or several separate icons.
+- Do not include more than one main object.
+`.trim();
 }
 
 function buildChapterImagePrompt(payload, selectedIdea) {
@@ -395,11 +485,17 @@ Composition:
 - Match the layout of Bild03 / reference tile 08: large number at far left, red divider close to the number, icon group on the right.
 - The red divider sits close to the number: around 24-27% from the left edge, not near the center of the canvas.
 - Use one single central symbol only; never merge two symbols, for example never combine lighthouse plus compass.
+- Allow at most one tiny supporting accent. If the idea mentions several objects, choose the strongest single object and ignore the rest.
+- If the title or idea describes a process, show one single result or transition object, not a sequence.
 - The icon must stay simple, but not small: no oversized floor object, no complex base, no full scene.
 - Make the core message instantly visible.
 - Include the fixed small navy wave in the lower-right corner.
 
 ${lockedStyle}
+
+Additional hard rules for chapter thumbnails:
+- Do not draw process roads, arrows between stages, multiple tables, connected stations, dashboards, many documents, networks, or separate icon collections.
+- Do not include more than one main object on the right side.
 `.trim();
 }
 
@@ -429,6 +525,8 @@ Composition:
 - Match the reference tile layout: left marker area, red divider close to it, icon group on the right.
 - The red divider sits around 24-27% from the left edge, not near the center of the canvas.
 - Use one single central metaphor symbol on the right; never merge unrelated full symbols.
+- Allow at most one tiny supporting accent. If the idea mentions several objects, choose the strongest single object and ignore the rest.
+- If the title or idea describes a process, show one single result or transition object, not a sequence.
 - The right icon must stay simple, but not small: no oversized floor object, no complex base, no full scene.
 - Make the core message instantly visible.
 - Include a small fixed navy wave in the lower-right corner: about 25-28% canvas width and 34-38% canvas height, still smaller and lower than the chapter-thumbnail wave.
@@ -438,6 +536,8 @@ ${lockedStyle}
 Additional hard rules for lesson thumbnails:
 - Absolutely no text, labels, letters, or numbers.
 - Do not draw any left-side icon. The server will place the fixed pixel-identical lesson symbol after generation.
+- Do not draw process roads, arrows between stages, rows of stations, multiple folders, checklists plus binders, dashboards, networks, or separate icon collections.
+- Do not include more than one main object on the right side.
 `.trim();
 }
 
@@ -593,7 +693,7 @@ function normalizePayload(payload) {
   if (!assetTypes[type]) throw new Error("Bitte eine gueltige Einsatzart auswaehlen.");
   if (type === "presentation") throw new Error("Diese App erzeugt nur Kurs-Thumbnails.");
   const typeConfig = assetTypes[type];
-  const isThumbnail = type === "chapter" || type === "lesson";
+  const isThumbnail = type === "course" || type === "chapter" || type === "lesson";
   const title = isThumbnail ? String(payload.title || payload.text || "").trim() : "";
   const context = isThumbnail ? String(payload.context || "").trim() : "";
   const text = isThumbnail ? title : String(payload.text || "").trim();
@@ -700,8 +800,18 @@ function extractResponseText(result) {
   return parts.join("\n").trim();
 }
 
+function cleanIdeaText(value) {
+  return String(value || "")
+    .replace(/^\s*(thumbnail-idee|bildidee|hauptmotiv)\s*\d*\s*[:.-]\s*/i, "")
+    .replace(/\s+(satz|visualisiert|zeigt|verdeutlicht)\s*[:.-].*$/i, "")
+    .replace(/\s+[–-]\s*(visualisiert|zeigt|verdeutlicht)\s+.*$/i, "")
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function localIdeas(payload) {
-  if (payload.type === "chapter" || payload.type === "lesson") {
+  if (payload.type === "course" || payload.type === "chapter" || payload.type === "lesson") {
     const title = payload.title || payload.text;
     const context = payload.context ? ` im Kontext ${payload.context}` : "";
     return {
@@ -712,9 +822,9 @@ function localIdeas(payload) {
       emotion: "Klarheit",
       visualMetaphor: payload.visualMetaphor || "Ein konkretes Arbeits- oder Prozessartefakt visualisiert den Kern des Titels.",
       ideas: [
-        `Eine geordnete Arbeitsunterlage mit markierten Bausteinen visualisiert die Struktur hinter "${title}".`,
-        `Drei klare Prozessstationen mit einem hervorgehobenen Uebergabepunkt zeigen den fachlichen Ablauf von "${title}".`,
-        `Ein Pruefbogen mit einem einzelnen hervorgehobenen Kernbereich zeigt, worauf es bei "${title}" ankommt.`
+        "Ein grosser Projektordner mit einem farbigen Registertab.",
+        "Ein robuster Werkzeugkasten mit einem hervorgehobenen Werkzeug.",
+        "Ein schlichtes Qualitaetssiegel mit kleinem roten Akzent."
       ],
       note: "Lokale Vorschlaege, weil noch kein OPENAI_API_KEY gesetzt ist."
     };
@@ -775,7 +885,7 @@ async function writeGallery(entries) {
 }
 
 function filterGallery(entries, app) {
-  if (app === "thumbnails") return entries.filter((item) => item.type === "chapter" || item.type === "lesson");
+  if (app === "thumbnails") return entries.filter((item) => item.type === "course" || item.type === "chapter" || item.type === "lesson");
   if (app === "presentations") return entries.filter((item) => item.type === "presentation");
   return entries;
 }

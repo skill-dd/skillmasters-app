@@ -152,10 +152,6 @@ h2 {
   gap: 12px;
 }
 
-body[data-app="thumbnails"] .mode-group {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .mode-group[hidden] {
   display: none;
 }
