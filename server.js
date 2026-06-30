@@ -135,9 +135,10 @@ async function createIdeas(payload) {
         schema: {
           type: "object",
           additionalProperties: false,
-          required: ["coreMessage", "learningGoal", "emotion", "visualMetaphor", "ideas"],
+          required: ["coreMessage", "contentSummary", "learningGoal", "emotion", "visualMetaphor", "ideas"],
           properties: {
             coreMessage: { type: "string" },
+            contentSummary: { type: "string" },
             learningGoal: { type: "string" },
             emotion: { type: "string" },
             visualMetaphor: { type: "string" },
@@ -158,6 +159,7 @@ async function createIdeas(payload) {
   return {
     ...normalized,
     coreMessage: parsed.coreMessage,
+    contentSummary: parsed.contentSummary || parsed.coreMessage || "",
     learningGoal: parsed.learningGoal || "",
     emotion: parsed.emotion || "",
     visualMetaphor: parsed.visualMetaphor || "",
@@ -173,48 +175,72 @@ function buildIdeasPrompt(normalized) {
 
 function buildChapterIdeasPrompt(normalized) {
   return `
-Du entwickelst exakt 3 kurze Bildideen fuer eine Skillmasters-Grafik.
+Du entwickelst Inhalt und exakt 3 konkrete Bildideen fuer ein Skillmasters-Kapitel-Thumbnail.
 
 Einsatzart: ${assetTypes[normalized.type].label}
-Nummer, falls vorhanden: ${normalized.number || "keine"}
-Sprechertext:
-${normalized.text}
+Kapitelnummer: ${normalized.number || "keine"}
+Titel:
+${normalized.title}
+Optionaler Kurs-/Fachkontext:
+${normalized.context || "nicht angegeben"}
+Vorhandene Nutzerkorrektur zur Inhaltsannahme:
+${normalized.contentSummary || "keine"}
+Vorhandene Nutzerkorrektur zum Lernziel:
+${normalized.learningGoal || "keine"}
+Vorhandene Nutzerkorrektur zur visuellen Metapher:
+${normalized.visualMetaphor || "keine"}
 
 Aufgabe:
-- Waehle genau eine Kernaussage.
-- Uebersetze sie in eine sofort verstaendliche Metapher.
-- Nutze bevorzugt dieses Symbolsystem und ergaenze es nur wenn wirklich noetig:
-${symbolSystem.map((item) => `${item.symbol} = ${item.meaning}`).join(", ")}
+- Leite aus dem kurzen Titel eine plausible fachliche Inhaltsannahme ab.
+- Erfinde keine spezifischen Fakten, Normen, Foerderbedingungen, Paragraphen oder Produktdetails.
+- Wenn der Titel mehrdeutig ist, bleibe allgemein und nutze den optionalen Kontext.
+- Formuliere eine klare Kernaussage und ein konkretes Lernziel.
+- Entwickle eine visuelle Metapher, die aus dem Fachinhalt kommt, nicht aus generischen Standard-Icons.
+- Bevorzuge konkrete Motive wie Unterlagen, Checklisten, Ablaufstationen, Rollenmarkierungen, Modellbausteine, Sicherheitszeichen, Qualitaetspruefung, Projektartefakte, Entscheidungsunterlagen, Prozessuebergaben oder Arbeitsmittel.
+- Verwende Kompass, Rakete, Leuchtturm, Wegweiser, Zielscheibe und Lupe nur, wenn sie wirklich aus dem Titel folgen.
 - Keine Menschen, keine Personen.
 - Keine Textelemente im Bild.
-- Jede Idee nur als ein kurzer deutscher Satz.
+- Jede Idee muss ein anderes konkretes Motiv verwenden.
+- Jede Idee erklaert in einem kurzen deutschen Satz sichtbar, welchen Inhalt sie visualisiert.
 
 Antworte ausschliesslich als JSON:
-{"coreMessage":"...","learningGoal":"","emotion":"","visualMetaphor":"","ideas":["...","...","..."]}
+{"coreMessage":"...","contentSummary":"...","learningGoal":"...","emotion":"","visualMetaphor":"...","ideas":["...","...","..."]}
 `.trim();
 }
 
 function buildLessonIdeasPrompt(normalized) {
   return `
-Du entwickelst exakt 3 kurze Bildideen fuer eine Skillmasters-Lektion-Thumbnail-Grafik.
+Du entwickelst Inhalt und exakt 3 konkrete Bildideen fuer ein Skillmasters-Lektion-Thumbnail.
 
 Einsatzart: ${assetTypes[normalized.type].label}
 Festes Lektionssymbol links: ${normalized.lessonIconLabel}
-Sprechertext:
-${normalized.text}
+Titel:
+${normalized.title}
+Optionaler Kurs-/Fachkontext:
+${normalized.context || "nicht angegeben"}
+Vorhandene Nutzerkorrektur zur Inhaltsannahme:
+${normalized.contentSummary || "keine"}
+Vorhandene Nutzerkorrektur zum Lernziel:
+${normalized.learningGoal || "keine"}
+Vorhandene Nutzerkorrektur zur visuellen Metapher:
+${normalized.visualMetaphor || "keine"}
 
 Aufgabe:
-- Waehle genau eine Kernaussage.
-- Uebersetze sie in eine sofort verstaendliche Metapher fuer die rechte Bildseite.
+- Leite aus dem kurzen Titel eine plausible fachliche Inhaltsannahme ab.
+- Erfinde keine spezifischen Fakten, Normen, Foerderbedingungen, Paragraphen oder Produktdetails.
+- Wenn der Titel mehrdeutig ist, bleibe allgemein und nutze den optionalen Kontext.
+- Formuliere eine klare Kernaussage und ein konkretes Lernziel.
+- Entwickle eine visuelle Metapher fuer die rechte Bildseite, die aus dem Fachinhalt kommt.
 - Das feste Lektionssymbol links ist nur die Typ-Markierung und darf nicht Teil der Bildidee sein.
-- Nutze bevorzugt dieses Symbolsystem und ergaenze es nur wenn wirklich noetig:
-${symbolSystem.map((item) => `${item.symbol} = ${item.meaning}`).join(", ")}
+- Bevorzuge konkrete Motive wie Unterlagen, Checklisten, Ablaufstationen, Rollenmarkierungen, Modellbausteine, Sicherheitszeichen, Qualitaetspruefung, Projektartefakte, Entscheidungsunterlagen, Prozessuebergaben oder Arbeitsmittel.
+- Verwende Kompass, Rakete, Leuchtturm, Wegweiser, Zielscheibe und Lupe nur, wenn sie wirklich aus dem Titel folgen.
 - Keine Menschen, keine Personen.
 - Keine Textelemente im Bild.
-- Jede Idee nur als ein kurzer deutscher Satz.
+- Jede Idee muss ein anderes konkretes Motiv verwenden.
+- Jede Idee erklaert in einem kurzen deutschen Satz sichtbar, welchen Inhalt sie visualisiert.
 
 Antworte ausschliesslich als JSON:
-{"coreMessage":"...","learningGoal":"","emotion":"","visualMetaphor":"","ideas":["...","...","..."]}
+{"coreMessage":"...","contentSummary":"...","learningGoal":"...","emotion":"","visualMetaphor":"...","ideas":["...","...","..."]}
 `.trim();
 }
 
@@ -251,7 +277,7 @@ ${symbolSystem.map((item) => `${item.symbol} = ${item.meaning}`).join(", ")}
 - Jede Idee nur als ein kurzer deutscher Satz.
 
 Antworte ausschliesslich als JSON:
-{"coreMessage":"...","learningGoal":"...","emotion":"...","visualMetaphor":"...","ideas":["...","...","..."]}
+{"coreMessage":"...","contentSummary":"...","learningGoal":"...","emotion":"...","visualMetaphor":"...","ideas":["...","...","..."]}
 `.trim();
 }
 
@@ -276,6 +302,7 @@ async function generateImages(payload) {
 
   const prompt = buildImagePrompt({
     ...normalized,
+    contentSummary: payload.contentSummary || normalized.contentSummary || "",
     coreMessage: payload.coreMessage || "",
     learningGoal: payload.learningGoal || "",
     emotion: payload.emotion || "",
@@ -327,7 +354,10 @@ async function generateImages(payload) {
       number: normalized.number,
       lessonIcon: normalized.lessonIcon,
       lessonIconLabel: normalized.lessonIconLabel,
+      title: normalized.title,
+      context: normalized.context,
       text: normalized.text,
+      contentSummary: payload.contentSummary || normalized.contentSummary || "",
       coreMessage: payload.coreMessage || "",
       learningGoal: payload.learningGoal || "",
       emotion: payload.emotion || "",
@@ -383,6 +413,13 @@ Create one final 16:9 Skillmasters course graphic.
 Selected metaphor idea:
 ${selectedIdea}
 
+Thumbnail input:
+- Title: ${payload.title || ""}
+- Context: ${payload.context || ""}
+- Assumed content: ${payload.contentSummary || payload.coreMessage || ""}
+- Learning goal: ${payload.learningGoal || ""}
+- Visual metaphor: ${payload.visualMetaphor || ""}
+
 Include the large two-digit number "${payload.number}" on the left, in ${CI.navy}. Place it like Bild03: left edge around 5-7% of canvas width, top around 15-17%, height around 52-58% of canvas. Add one thin vertical red divider line close to the number, at about 25% of canvas width, from about 18% to 72% of canvas height. The number is the only text-like element allowed.
 
 Composition:
@@ -406,6 +443,13 @@ Create one final 16:9 Skillmasters lesson thumbnail graphic.
 
 Selected metaphor idea for the right-side illustration:
 ${selectedIdea}
+
+Thumbnail input:
+- Title: ${payload.title || ""}
+- Context: ${payload.context || ""}
+- Assumed content: ${payload.contentSummary || payload.coreMessage || ""}
+- Learning goal: ${payload.learningGoal || ""}
+- Visual metaphor: ${payload.visualMetaphor || ""}
 
 The fixed lesson icon "${payload.lessonIconLabel}" will be added later by the server. Do not draw this icon yourself.
 
@@ -581,13 +625,30 @@ async function generateOpenAIImage(prompt) {
 function normalizePayload(payload) {
   const type = String(payload.type || "").trim();
   if (!assetTypes[type]) throw new Error("Bitte eine gueltige Einsatzart auswaehlen.");
-  const text = String(payload.text || "").trim();
-  if (text.length < 20) throw new Error("Bitte einen Sprechertext mit mindestens 20 Zeichen eingeben.");
   const typeConfig = assetTypes[type];
+  const isThumbnail = type === "chapter" || type === "lesson";
+  const title = isThumbnail ? String(payload.title || payload.text || "").trim() : "";
+  const context = isThumbnail ? String(payload.context || "").trim() : "";
+  const text = isThumbnail ? title : String(payload.text || "").trim();
+  if (isThumbnail && title.length < 3) throw new Error("Bitte einen Titel eingeben.");
+  if (!isThumbnail && text.length < 20) throw new Error("Bitte einen Sprechertext mit mindestens 20 Zeichen eingeben.");
   const number = typeConfig.needsNumber ? normalizeNumber(payload.number) : "";
   const lessonIcon = typeConfig.needsLessonIcon ? normalizeLessonIcon(payload.lessonIcon) : "";
   const lessonIconLabel = lessonIcon ? lessonIcons.find((icon) => icon.id === lessonIcon).label : "";
-  return { type, text, number, lessonIcon, lessonIconLabel };
+  return {
+    type,
+    title,
+    context,
+    text,
+    contentSummary: String(payload.contentSummary || "").trim(),
+    coreMessage: String(payload.coreMessage || "").trim(),
+    learningGoal: String(payload.learningGoal || "").trim(),
+    emotion: String(payload.emotion || "").trim(),
+    visualMetaphor: String(payload.visualMetaphor || "").trim(),
+    number,
+    lessonIcon,
+    lessonIconLabel
+  };
 }
 
 function normalizeNumber(value) {
@@ -708,6 +769,25 @@ function extractResponseText(result) {
 }
 
 function localIdeas(payload) {
+  if (payload.type === "chapter" || payload.type === "lesson") {
+    const title = payload.title || payload.text;
+    const context = payload.context ? ` im Kontext ${payload.context}` : "";
+    return {
+      ...payload,
+      coreMessage: `${title} wird als konkreter fachlicher Einstieg verstanden.`,
+      contentSummary: payload.contentSummary || `Der Titel beschreibt ein kompaktes Lernstueck${context}, das zentrale Begriffe, Ablauf oder Rollen klaert.`,
+      learningGoal: payload.learningGoal || "Der Zuschauer versteht, worum es in dieser Einheit fachlich geht und worauf er achten soll.",
+      emotion: "Klarheit",
+      visualMetaphor: payload.visualMetaphor || "Ein konkretes Arbeits- oder Prozessartefakt visualisiert den Kern des Titels.",
+      ideas: [
+        `Eine geordnete Arbeitsunterlage mit markierten Bausteinen visualisiert die Struktur hinter "${title}".`,
+        `Drei klare Prozessstationen mit einem hervorgehobenen Uebergabepunkt zeigen den fachlichen Ablauf von "${title}".`,
+        `Ein Pruefbogen mit einem einzelnen hervorgehobenen Kernbereich zeigt, worauf es bei "${title}" ankommt.`
+      ],
+      note: "Lokale Vorschlaege, weil noch kein OPENAI_API_KEY gesetzt ist."
+    };
+  }
+
   const lower = payload.text.toLowerCase();
   const symbol = lower.includes("strategie") ? "Kompass"
     : lower.includes("fehler") || lower.includes("risiko") ? "Warnschild"

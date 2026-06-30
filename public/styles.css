@@ -194,6 +194,10 @@ textarea {
   line-height: 1.5;
 }
 
+.thumbnail-mode #scriptText {
+  min-height: 64px;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -308,6 +312,27 @@ textarea:focus {
   font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.analysis-input {
+  min-height: 96px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  resize: vertical;
+  color: var(--navy);
+  font-size: 14px;
+  line-height: 1.35;
+  box-shadow: none;
+}
+
+.analysis-input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.analysis-input[readonly] {
+  cursor: default;
 }
 
 .analysis p {

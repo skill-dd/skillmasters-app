@@ -15,6 +15,9 @@ const el = {
   numberSection: document.querySelector("#numberSection"),
   numberWrap: document.querySelector("#numberWrap"),
   number: document.querySelector("#number"),
+  contextWrap: document.querySelector("#contextWrap"),
+  contextInput: document.querySelector("#contextInput"),
+  mainInputLabel: document.querySelector("#mainInputLabel"),
   lessonIconSection: document.querySelector("#lessonIconSection"),
   lessonIconGrid: document.querySelector("#lessonIconGrid"),
   scriptText: document.querySelector("#scriptText"),
@@ -25,6 +28,8 @@ const el = {
   status: document.querySelector("#status"),
   coreMessage: document.querySelector("#coreMessage"),
   analysis: document.querySelector("#analysis"),
+  analysisCoreLabel: document.querySelector("#analysisCoreLabel"),
+  analysisEmotionLabel: document.querySelector("#analysisEmotionLabel"),
   analysisCore: document.querySelector("#analysisCore"),
   analysisEmotion: document.querySelector("#analysisEmotion"),
   analysisMetaphor: document.querySelector("#analysisMetaphor"),
@@ -76,32 +81,40 @@ function bindEvents() {
 
 function updateModeUi() {
   const type = currentType();
+  const thumbnailMode = isThumbnailMode();
   el.modeButtons.forEach((button) => {
     button.classList.toggle("selected", button.dataset.type === state.type);
   });
   el.formPanel.classList.toggle("presentation-mode", state.type === "presentation");
   el.formPanel.classList.toggle("lesson-mode", state.type === "lesson");
+  el.formPanel.classList.toggle("thumbnail-mode", thumbnailMode);
   el.numberSection.hidden = !type.needsNumber;
   el.numberWrap.hidden = !type.needsNumber;
+  el.contextWrap.hidden = !thumbnailMode;
   el.lessonIconSection.hidden = !type.needsLessonIcon;
   el.previewNumber.hidden = !type.needsNumber;
   el.previewLessonIcon.hidden = !type.needsLessonIcon;
   el.previewDivider.hidden = !(type.needsNumber || type.needsLessonIcon);
   el.previewNumber.textContent = normalizedNumber();
   el.previewLessonIcon.innerHTML = type.needsLessonIcon ? lessonIconSvg(state.lessonIcon) : "";
-  el.ideasBtn.textContent = state.type === "presentation"
-    ? "Analyse & 3 Bildideen erstellen"
-    : "3 Bildideen erstellen";
+  el.mainInputLabel.textContent = thumbnailMode ? "Titel" : "Sprechertext";
+  el.scriptText.rows = thumbnailMode ? 2 : 9;
+  el.scriptText.placeholder = thumbnailMode
+    ? "z. B. Was ist INQA-Coaching?"
+    : "Sprechertext hier einfuegen...";
+  el.ideasBtn.textContent = thumbnailMode
+    ? "Inhalt & 3 Bildideen erstellen"
+    : "Analyse & 3 Bildideen erstellen";
   resetIdeas();
 }
 
 async function createIdeas() {
-  setStatus(state.type === "presentation"
-    ? "Kernaussage, Emotion und Metapher werden verdichtet..."
-    : "Kernaussage wird verdichtet...");
-  resetIdeas();
+  setStatus(isThumbnailMode()
+    ? "Titel wird in Inhalt, Lernziel und Bildideen uebersetzt..."
+    : "Kernaussage, Emotion und Metapher werden verdichtet...");
   try {
     const payload = formPayload();
+    resetIdeas({ keepAnalysis: true });
     const data = await api("api/ideas", {
       method: "POST",
       body: JSON.stringify(payload)
@@ -117,16 +130,26 @@ async function createIdeas() {
 }
 
 function renderAnalysis(data) {
-  el.coreMessage.textContent = state.type === "chapter" ? data.coreMessage || "" : "";
-  if (state.type !== "presentation") {
+  const thumbnailMode = isThumbnailMode();
+  el.coreMessage.textContent = thumbnailMode ? data.coreMessage || "" : "";
+  if (!thumbnailMode && state.type !== "presentation") {
     el.analysis.hidden = true;
     return;
   }
 
   el.analysis.hidden = false;
-  el.analysisCore.textContent = data.coreMessage || "Keine Kernaussage erhalten.";
-  el.analysisEmotion.textContent = data.emotion || "Keine Emotion erhalten.";
-  el.analysisMetaphor.textContent = data.visualMetaphor || "Keine visuelle Metapher erhalten.";
+  el.analysisCoreLabel.textContent = thumbnailMode ? "Angenommener Inhalt" : "Kernaussage";
+  el.analysisEmotionLabel.textContent = thumbnailMode ? "Lernziel" : "Emotion";
+  el.analysisCore.readOnly = !thumbnailMode;
+  el.analysisEmotion.readOnly = !thumbnailMode;
+  el.analysisMetaphor.readOnly = !thumbnailMode;
+  el.analysisCore.value = thumbnailMode
+    ? data.contentSummary || data.coreMessage || "Keine Inhaltsannahme erhalten."
+    : data.coreMessage || "Keine Kernaussage erhalten.";
+  el.analysisEmotion.value = thumbnailMode
+    ? data.learningGoal || "Kein Lernziel erhalten."
+    : data.emotion || "Keine Emotion erhalten.";
+  el.analysisMetaphor.value = data.visualMetaphor || "Keine visuelle Metapher erhalten.";
 }
 
 function renderIdeas(ideas) {
@@ -160,6 +183,7 @@ function updateComponentRecommendation() {
   const source = [
     state.selectedIdea,
     state.ideasPayload?.coreMessage,
+    state.ideasPayload?.contentSummary,
     state.ideasPayload?.learningGoal,
     state.ideasPayload?.visualMetaphor,
     el.scriptText.value
@@ -197,10 +221,7 @@ async function generateImage() {
   try {
     const payload = {
       ...formPayload(),
-      coreMessage: state.ideasPayload?.coreMessage || "",
-      learningGoal: state.ideasPayload?.learningGoal || "",
-      emotion: state.ideasPayload?.emotion || "",
-      visualMetaphor: state.ideasPayload?.visualMetaphor || "",
+      ...analysisPayload(),
       componentCount: state.type === "presentation" ? state.componentCount : 1,
       componentCountRecommendation: state.type === "presentation" ? state.componentCountRecommendation : 1,
       selectedIdea: state.selectedIdea,
@@ -258,12 +279,47 @@ function renderLatestPreview(item) {
 }
 
 function formPayload() {
+  if (isThumbnailMode()) {
+    return {
+      type: state.type,
+      number: normalizedNumber(),
+      lessonIcon: state.lessonIcon,
+      title: el.scriptText.value.trim(),
+      context: el.contextInput.value.trim(),
+      ...analysisPayload()
+    };
+  }
+
   return {
     type: state.type,
     number: normalizedNumber(),
     lessonIcon: state.lessonIcon,
     text: el.scriptText.value.trim()
   };
+}
+
+function analysisPayload() {
+  if (isThumbnailMode()) {
+    return {
+      contentSummary: el.analysisCore.value.trim(),
+      coreMessage: state.ideasPayload?.coreMessage || el.analysisCore.value.trim(),
+      learningGoal: el.analysisEmotion.value.trim(),
+      emotion: state.ideasPayload?.emotion || "",
+      visualMetaphor: el.analysisMetaphor.value.trim()
+    };
+  }
+
+  return {
+    contentSummary: state.ideasPayload?.contentSummary || "",
+    coreMessage: el.analysisCore.value.trim() || state.ideasPayload?.coreMessage || "",
+    learningGoal: state.ideasPayload?.learningGoal || "",
+    emotion: el.analysisEmotion.value.trim() || state.ideasPayload?.emotion || "",
+    visualMetaphor: el.analysisMetaphor.value.trim() || state.ideasPayload?.visualMetaphor || ""
+  };
+}
+
+function isThumbnailMode() {
+  return state.type === "chapter" || state.type === "lesson";
 }
 
 function currentType() {
@@ -274,7 +330,7 @@ function normalizedNumber() {
   return (el.number.value || "1").replace(/\D/g, "").padStart(2, "0").slice(-2);
 }
 
-function resetIdeas() {
+function resetIdeas(options = {}) {
   state.ideasPayload = null;
   state.selectedIdea = "";
   state.selectedIndex = -1;
@@ -283,15 +339,19 @@ function resetIdeas() {
   el.generateBtn.disabled = true;
   el.newIdeasBtn.disabled = true;
   el.coreMessage.textContent = "";
-  el.analysis.hidden = true;
-  el.analysisCore.textContent = "";
-  el.analysisEmotion.textContent = "";
-  el.analysisMetaphor.textContent = "";
+  if (!options.keepAnalysis) {
+    el.analysis.hidden = true;
+    el.analysisCore.value = "";
+    el.analysisEmotion.value = "";
+    el.analysisMetaphor.value = "";
+  }
   el.componentPicker.hidden = true;
   el.componentRecommendation.textContent = "1 Grafik";
   el.componentOptions.forEach((button) => button.classList.remove("selected"));
   el.ideas.className = "ideas empty";
-  el.ideas.innerHTML = "<p>Nach dem Sprechertext erscheinen hier genau drei reduzierte Ideen.</p>";
+  el.ideas.innerHTML = isThumbnailMode()
+    ? "<p>Titel eingeben; die App leitet Inhalt und Bildideen daraus ab.</p>"
+    : "<p>Nach dem Sprechertext erscheinen hier genau drei reduzierte Ideen.</p>";
 }
 
 function renderLessonIcons() {
