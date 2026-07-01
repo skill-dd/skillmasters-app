@@ -17,6 +17,7 @@ import {
 import {
   createGalleryStore,
   createPathHelpers,
+  createRateLimiter,
   createStaticServer,
   downloadImage,
   extractResponseText,
@@ -53,6 +54,14 @@ const APP_PATHS = {
 };
 const PUBLIC_BASE_PATH = normalizeRoutePath(process.env.PUBLIC_BASE_PATH || "/");
 const { publicAppPaths, withBasePath } = createPathHelpers(APP_PATHS, PUBLIC_BASE_PATH);
+const ideasRateLimit = createRateLimiter({
+  max: Number(process.env.RATE_LIMIT_IDEAS_PER_HOUR || 40),
+  label: "Bildideen"
+});
+const generateRateLimit = createRateLimiter({
+  max: Number(process.env.RATE_LIMIT_GENERATE_PER_HOUR || 10),
+  label: "Bilderzeugung"
+});
 const galleryStore = createGalleryStore({
   galleryPath,
   dataDir,
@@ -89,9 +98,11 @@ const server = http.createServer(async (req, res) => {
       return json(res, await readGallery(url.searchParams.get("app") || ""));
     }
     if (req.method === "POST" && requestPath === "/api/ideas") {
+      ideasRateLimit(req);
       return json(res, await createIdeas(await parseJsonBody(req, maxJsonBytes)));
     }
     if (req.method === "POST" && requestPath === "/api/generate") {
+      generateRateLimit(req);
       return json(res, await generateImages(await parseJsonBody(req, maxJsonBytes)));
     }
     if (req.method === "GET" && isRemovedGrafikenPath(requestPath)) {
@@ -381,8 +392,7 @@ async function generateImages(payload) {
       lessonIconLabel: normalized.lessonIconLabel,
       selectedIdea,
       imageUrl: withBasePath(`/outputs/images/${baseName}.png`),
-      svgUrl,
-      promptUrl: withBasePath(`/outputs/prompts/${baseName}.json`)
+      svgUrl
     });
   }
 

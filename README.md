@@ -39,6 +39,8 @@ git clone https://github.com/skill-dd/skillmasters-app.git /tmp/skillmasters-app
 cd /tmp/skillmasters-app
 REPO_URL=https://github.com/skill-dd/skillmasters-app.git \
 APP_DOMAIN=app.skillmasters.de \
+BASIC_AUTH_USER=skillmasters \
+BASIC_AUTH_PASSWORD='hier-ein-starkes-passwort-eintragen' \
 bash deploy/install-hetzner.sh
 ```
 
@@ -58,7 +60,7 @@ lokal auf dem Hetzner-Server.
 
 ## Passwortschutz
 
-Der oeffentliche Zugriff kann ueber Caddy Basic Auth geschuetzt werden. Das
+Der oeffentliche Zugriff wird ueber Caddy Basic Auth geschuetzt. Das
 Klartext-Passwort wird nicht im Repository gespeichert; auf dem Server bleibt
 nur der Passwort-Hash in `/etc/skillmasters-basic-auth.env`.
 
@@ -73,3 +75,18 @@ bash deploy/configure-basic-auth.sh
 
 Wenn der Installer spaeter erneut ausgefuehrt wird, verwendet er diesen
 gespeicherten Passwort-Hash automatisch weiter.
+
+## Schutz der Generator-APIs
+
+Die teuren Generator-Endpunkte sind serverseitig begrenzt. Standardwerte pro
+IP-Adresse und App:
+
+- `RATE_LIMIT_IDEAS_PER_HOUR=40`
+- `RATE_LIMIT_GENERATE_PER_HOUR=10`
+
+Die Werte koennen bei Bedarf in den systemd-Services oder in den `.env`-Dateien
+der beiden Generator-Apps angepasst werden.
+
+Prompt-JSONs werden weiter lokal in `outputs/prompts/` gespeichert, aber nicht
+mehr in der Galerie verlinkt und nicht mehr ueber `/outputs/prompts/...`
+ausgeliefert.

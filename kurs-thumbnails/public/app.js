@@ -206,7 +206,6 @@ async function loadGallery() {
         <span>${escapeHtml(item.selectedIdea)}</span>
         <a href="${item.imageUrl}" download>Bild herunterladen</a>
         ${item.svgUrl ? `<a href="${item.svgUrl}" download>SVG herunterladen</a>` : ""}
-        <a href="${item.promptUrl}" target="_blank" rel="noreferrer">Prompt ansehen</a>
       </div>
     </article>
   `).join("");

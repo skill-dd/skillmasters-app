@@ -23,31 +23,41 @@ if [ -f "$AUTH_ENV_FILE" ]; then
   source "$AUTH_ENV_FILE"
 fi
 
-BASIC_AUTH_USER="${BASIC_AUTH_USER:-}"
+BASIC_AUTH_USER="${BASIC_AUTH_USER:-skillmasters}"
 BASIC_AUTH_PASSWORD="${BASIC_AUTH_PASSWORD:-}"
 BASIC_AUTH_HASH="${BASIC_AUTH_HASH:-}"
+
+if [ -z "$BASIC_AUTH_PASSWORD" ] && [ -z "$BASIC_AUTH_HASH" ]; then
+  echo "Passwortschutz ist Pflicht. Bitte BASIC_AUTH_PASSWORD setzen oder $AUTH_ENV_FILE vorbereiten." >&2
+  exit 1
+fi
+
+if [ -z "$BASIC_AUTH_USER" ] || [[ "$BASIC_AUTH_USER" =~ [[:space:]] ]]; then
+  echo "BASIC_AUTH_USER darf nicht leer sein und keine Leerzeichen enthalten." >&2
+  exit 1
+fi
 
 apt-get update
 apt-get install -y ca-certificates curl git gnupg caddy
 
-AUTH_BLOCK=""
-if [ -n "$BASIC_AUTH_PASSWORD" ] || [ -n "$BASIC_AUTH_HASH" ]; then
-  BASIC_AUTH_USER="${BASIC_AUTH_USER:-skillmasters}"
-  if [[ "$BASIC_AUTH_USER" =~ [[:space:]] ]]; then
-    echo "BASIC_AUTH_USER darf keine Leerzeichen enthalten." >&2
-    exit 1
-  fi
-  if [ -z "$BASIC_AUTH_HASH" ]; then
-    BASIC_AUTH_HASH="$(caddy hash-password --plaintext "$BASIC_AUTH_PASSWORD")"
-  fi
-  AUTH_BLOCK=$(cat <<EOF
+if [ -z "$BASIC_AUTH_HASH" ]; then
+  BASIC_AUTH_HASH="$(caddy hash-password --plaintext "$BASIC_AUTH_PASSWORD")"
+fi
+
+install -m 600 /dev/null "$AUTH_ENV_FILE"
+{
+  echo "BASIC_AUTH_USER='$BASIC_AUTH_USER'"
+  echo "BASIC_AUTH_HASH='$BASIC_AUTH_HASH'"
+} >"$AUTH_ENV_FILE"
+chmod 600 "$AUTH_ENV_FILE"
+
+AUTH_BLOCK=$(cat <<EOF
   basicauth {
     $BASIC_AUTH_USER $BASIC_AUTH_HASH
   }
 
 EOF
 )
-fi
 
 if ! command -v node >/dev/null 2>&1 || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)'; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -

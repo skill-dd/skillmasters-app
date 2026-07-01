@@ -51,6 +51,30 @@ export async function readJson(req, maxBytes = 1_000_000) {
   }
 }
 
+export function createRateLimiter({ windowMs = 60 * 60 * 1000, max = 20, label = "Anfragen" } = {}) {
+  const buckets = new Map();
+
+  return function checkRateLimit(req) {
+    const now = Date.now();
+    const key = clientIp(req);
+    const current = buckets.get(key);
+    const bucket = !current || current.resetAt <= now
+      ? { count: 0, resetAt: now + windowMs }
+      : current;
+
+    bucket.count += 1;
+    buckets.set(key, bucket);
+    cleanupBuckets(buckets, now);
+
+    if (bucket.count > max) {
+      const minutes = Math.max(1, Math.ceil((bucket.resetAt - now) / 60_000));
+      const error = new Error(`${label}: zu viele Anfragen. Bitte in ca. ${minutes} Min. erneut versuchen.`);
+      error.status = 429;
+      throw error;
+    }
+  };
+}
+
 export async function openAI(endpoint, body) {
   const response = await fetch(`https://api.openai.com${endpoint}`, {
     method: "POST",
@@ -146,12 +170,7 @@ export function createGalleryStore({ galleryPath, dataDir, filterTypes, withBase
       const text = await readFile(galleryPath, "utf8");
       const entries = text.trim() ? JSON.parse(text) : [];
       if (!Array.isArray(entries)) return [];
-      return filterGallery(entries, app, filterTypes).map((item) => ({
-        ...item,
-        imageUrl: withBasePath(item.imageUrl),
-        svgUrl: item.svgUrl ? withBasePath(item.svgUrl) : "",
-        promptUrl: withBasePath(item.promptUrl)
-      }));
+      return filterGallery(entries, app, filterTypes).map((item) => publicGalleryItem(item, withBasePath));
     },
     async write(entries) {
       await mkdir(dataDir, { recursive: true });
@@ -165,6 +184,9 @@ export function createStaticServer({ appDir, publicDir, sharedStylesPath, output
     const cleanPath = decodeURIComponent(requestPath === "/" ? "/index.html" : requestPath);
     if (cleanPath === "/shared/styles.css") {
       return serveFile(sharedStylesPath, res);
+    }
+    if (cleanPath.startsWith("/outputs/prompts/")) {
+      return notFound(res);
     }
     const isOutput = cleanPath.startsWith("/outputs/");
     const root = path.resolve(isOutput ? outputDir : publicDir);
@@ -191,6 +213,27 @@ function filterGallery(entries, app, filterTypes) {
   if (app === "thumbnails") return entries.filter((item) => filterTypes.thumbnails.includes(item.type));
   if (app === "presentations") return entries.filter((item) => filterTypes.presentations.includes(item.type));
   return entries;
+}
+
+function publicGalleryItem(item, withBasePath) {
+  const { promptUrl, ...publicItem } = item;
+  return {
+    ...publicItem,
+    imageUrl: withBasePath(publicItem.imageUrl),
+    svgUrl: publicItem.svgUrl ? withBasePath(publicItem.svgUrl) : ""
+  };
+}
+
+function clientIp(req) {
+  const forwardedFor = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwardedFor || req.socket.remoteAddress || "unknown";
+}
+
+function cleanupBuckets(buckets, now) {
+  if (buckets.size < 1000) return;
+  for (const [key, bucket] of buckets) {
+    if (bucket.resetAt <= now) buckets.delete(key);
+  }
 }
 
 function displayRoutePath(routePath) {
