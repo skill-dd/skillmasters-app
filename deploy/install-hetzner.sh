@@ -41,7 +41,7 @@ if [ -n "$BASIC_AUTH_PASSWORD" ] || [ -n "$BASIC_AUTH_HASH" ]; then
     BASIC_AUTH_HASH="$(caddy hash-password --plaintext "$BASIC_AUTH_PASSWORD")"
   fi
   AUTH_BLOCK=$(cat <<EOF
-  basic_auth {
+  basicauth {
     $BASIC_AUTH_USER $BASIC_AUTH_HASH
   }
 

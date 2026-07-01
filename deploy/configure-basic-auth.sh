@@ -34,7 +34,7 @@ chmod 600 "$AUTH_ENV_FILE"
 
 cat >/etc/caddy/Caddyfile <<EOF
 $APP_DOMAIN {
-  basic_auth {
+  basicauth {
     $BASIC_AUTH_USER $BASIC_AUTH_HASH
   }
 
